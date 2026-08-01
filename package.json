@@ -16,6 +16,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check": "npm run typecheck && npm run lint && npm run test && npm run build",
+    "check:security": "npm audit --audit-level=moderate && npx supabase db lint --local --fail-on error",
+    "check:supabase:advisors": "npx supabase db advisors --linked",
     "prepare:cloudflare": "node scripts/prepare-cloudflare-config.mjs",
     "deploy:cloudflare:dry-run": "npm run build && npm run prepare:cloudflare && wrangler deploy --config .output/server/wrangler.json --dry-run",
     "deploy:cloudflare": "npm run build && npm run prepare:cloudflare && wrangler deploy --config .output/server/wrangler.json --keep-vars",

@@ -6,6 +6,7 @@ auth, database, and media storage.
 ## Supabase
 
 Apply the migrations in `supabase/migrations` before sending production traffic.
+Use `docs/LAUNCH_CHECKLIST.md` as the launch gate.
 
 Required project settings:
 
@@ -34,6 +35,21 @@ Required project settings:
   - Use a public bucket only if uploaded media should be public.
   - Enforce upload MIME/size limits in Storage policies before accepting
     untrusted production uploads.
+
+### Migration Reconciliation
+
+Before pushing migrations to the linked production project, run:
+
+```sh
+npx supabase migration list --linked
+npx supabase db push --linked --dry-run
+```
+
+If the remote migration history has versions that are not present locally, do
+not mark them reverted until the live schema has been inspected. Pull or
+recreate the missing migration files when possible. If the live schema already
+matches the committed migrations, use `supabase migration repair --linked
+--status applied <version>` only for versions that were genuinely applied.
 
 ### First Admin
 
@@ -174,6 +190,8 @@ Supabase:
 - Review RLS denial spikes after policy changes.
 - Run `npx supabase db lint --local --fail-on error` before deploys and use the
   Supabase advisors against production before major launches.
+- Use `npm run check:supabase:advisors` after the project is linked and the user
+  has permission to run remote advisors.
 
 Sentry:
 
@@ -188,12 +206,9 @@ Sentry:
 Before promoting a deploy:
 
 ```sh
-npm run typecheck
-npm run lint
-npm run test
-npm run build
-npm run prepare:cloudflare
-wrangler deploy --config .output/server/wrangler.json --dry-run
+npm run check
+npm run check:security
+npm run deploy:cloudflare:dry-run
 ```
 
 Then verify in browser:
