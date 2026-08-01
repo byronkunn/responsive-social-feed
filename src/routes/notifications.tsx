@@ -89,6 +89,7 @@ function Notifications() {
             key={f.key}
             type="button"
             onClick={() => setFilter(f.key)}
+            aria-pressed={filter === f.key}
             className={`truncate py-3.5 text-center font-display text-sm font-bold transition-colors ${
               filter === f.key
                 ? "border-b-2 border-signal text-foreground"

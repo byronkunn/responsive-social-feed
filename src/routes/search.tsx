@@ -38,7 +38,7 @@ const tabs = ["Top", "Latest", "People"] as const;
 
 function SearchPage() {
   const { q } = Route.useSearch();
-  const navigate = useNavigate({ from: "/search" });
+  const navigate = useNavigate();
   const [value, setValue] = useState(q);
   const [tab, setTab] = useState<(typeof tabs)[number]>("Top");
   const [allPosts, setAllPosts] = useState<Post[]>([]);
@@ -49,6 +49,10 @@ function SearchPage() {
       .then((data) => setAllPosts(data))
       .catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    setValue(q);
+  }, [q]);
 
   useEffect(() => {
     let active = true;
@@ -86,6 +90,10 @@ function SearchPage() {
     ),
   ).slice(0, 8);
 
+  function submitSearch(nextValue = value) {
+    navigate({ to: "/search", search: { q: nextValue.trim() } });
+  }
+
   return (
     <AppShell>
       <TopBar title="Search" subtitle={q ? `Results for "${q}"` : "Find anything on Pulse"} />
@@ -94,7 +102,7 @@ function SearchPage() {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            navigate({ search: { q: value.trim() } });
+            submitSearch();
           }}
           className="flex items-center gap-2 rounded-full bg-surface px-4 py-2.5"
         >
@@ -102,6 +110,11 @@ function SearchPage() {
           <input
             value={value}
             onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              e.preventDefault();
+              submitSearch();
+            }}
             placeholder="Search Pulse"
             aria-label="Search Pulse"
             className="min-w-0 flex-1 bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none"
@@ -112,7 +125,7 @@ function SearchPage() {
               aria-label="Clear search"
               onClick={() => {
                 setValue("");
-                navigate({ search: { q: "" } });
+                submitSearch("");
               }}
               className="shrink-0 text-muted-foreground hover:text-foreground"
             >
@@ -154,7 +167,7 @@ function SearchPage() {
                   type="button"
                   onClick={() => {
                     setValue(t);
-                    navigate({ search: { q: t } });
+                    submitSearch(t);
                   }}
                   className="rounded-full bg-surface px-4 py-2 text-sm font-medium transition-colors hover:bg-surface-2"
                 >

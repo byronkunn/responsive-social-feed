@@ -53,14 +53,31 @@ function EditProfile() {
       toast.error("Your profile is still loading. Try again.");
       return;
     }
+
+    const nextProfile = {
+      ...profile,
+      display_name: displayName.trim(),
+      handle: displayHandle.trim().toLowerCase(),
+      bio: displayBio.trim(),
+      initials: displayName.trim().slice(0, 2).toUpperCase(),
+    };
+
+    if (profile.id.startsWith("local-")) {
+      localStorage.setItem("pulse_local_user", JSON.stringify(nextProfile));
+      setProfile(nextProfile);
+      toast.success("Profile updated");
+      navigate({ to: "/profile" });
+      return;
+    }
+
     setBusy(true);
     const { error } = await supabase
       .from("profiles")
       .update({
-        display_name: displayName.trim(),
-        handle: displayHandle.trim().toLowerCase(),
-        bio: displayBio.trim(),
-        initials: displayName.trim().slice(0, 2).toUpperCase(),
+        display_name: nextProfile.display_name,
+        handle: nextProfile.handle,
+        bio: nextProfile.bio,
+        initials: nextProfile.initials,
       })
       .eq("id", profile.id);
     setBusy(false);
@@ -69,13 +86,7 @@ function EditProfile() {
       return;
     }
     toast.success("Profile updated");
-    setProfile({
-      ...profile,
-      display_name: displayName.trim(),
-      handle: displayHandle.trim().toLowerCase(),
-      bio: displayBio.trim(),
-      initials: displayName.trim().slice(0, 2).toUpperCase(),
-    });
+    setProfile(nextProfile);
     navigate({ to: "/profile" });
   }
 

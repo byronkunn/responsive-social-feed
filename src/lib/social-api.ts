@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { localProfileFromStorage } from "@/hooks/use-session";
 import {
   type Author,
   type ChatAttachment,
@@ -113,6 +114,7 @@ export type ExploreData = {
 const POST_BODY_LIMIT = 280;
 const REPLY_BODY_LIMIT = 280;
 const MAX_MEDIA_ATTACHMENTS = 20;
+const LOCAL_DRAFTS_KEY = "pulse.local-drafts";
 
 function age(iso: string) {
   const seconds = Math.max(1, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
@@ -161,6 +163,10 @@ function isLocalProfileId(id?: string | null) {
   return !!id && id.startsWith("local-");
 }
 
+function localProfileId() {
+  return localProfileFromStorage()?.id ?? null;
+}
+
 function normalizeTextBody(body: string, limit: number) {
   const trimmed = body.trim();
   if (trimmed.length > limit) {
@@ -175,6 +181,29 @@ function normalizeMediaUrls(imageUrls?: string[]) {
     throw new Error(`Attach up to ${MAX_MEDIA_ATTACHMENTS} images per post`);
   }
   return cleaned;
+}
+
+type LocalDraft = {
+  id: string;
+  body: string;
+  audience: "everyone" | "followers";
+  updated_at: string;
+};
+
+function readLocalDrafts(): LocalDraft[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(LOCAL_DRAFTS_KEY);
+    return raw ? (JSON.parse(raw) as LocalDraft[]) : [];
+  } catch {
+    localStorage.removeItem(LOCAL_DRAFTS_KEY);
+    return [];
+  }
+}
+
+function writeLocalDrafts(drafts: LocalDraft[]) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(LOCAL_DRAFTS_KEY, JSON.stringify(drafts));
 }
 
 function normalizeAttachmentUrls(attachments?: ChatAttachment[]) {
@@ -388,6 +417,22 @@ export async function toggleReaction(
 }
 
 export async function saveDraft(body: string, audience: "Everyone" | "Followers" = "Everyone") {
+  const localId = localProfileId();
+  if (isLocalProfileId(localId)) {
+    const trimmedBody = normalizeTextBody(body, POST_BODY_LIMIT);
+    const now = new Date().toISOString();
+    writeLocalDrafts([
+      {
+        id: `local-draft-${Date.now()}`,
+        body: trimmedBody,
+        audience: audience.toLowerCase() as "everyone" | "followers",
+        updated_at: now,
+      },
+      ...readLocalDrafts(),
+    ]);
+    return;
+  }
+
   const authorId = await currentUserId();
   const trimmedBody = normalizeTextBody(body, POST_BODY_LIMIT);
   const { error } = await supabase.from("drafts").insert({
@@ -400,6 +445,24 @@ export async function saveDraft(body: string, audience: "Everyone" | "Followers"
 
 export async function updateDraft(id: string, body: string, audience: "Everyone" | "Followers") {
   const trimmedBody = normalizeTextBody(body, POST_BODY_LIMIT);
+  const localId = localProfileId();
+  if (isLocalProfileId(localId) || id.startsWith("local-draft-")) {
+    const now = new Date().toISOString();
+    writeLocalDrafts(
+      readLocalDrafts().map((draft) =>
+        draft.id === id
+          ? {
+              ...draft,
+              body: trimmedBody,
+              audience: audience.toLowerCase() as "everyone" | "followers",
+              updated_at: now,
+            }
+          : draft,
+      ),
+    );
+    return;
+  }
+
   const { error } = await supabase
     .from("drafts")
     .update({ body: trimmedBody, audience: audience.toLowerCase() })
@@ -408,6 +471,17 @@ export async function updateDraft(id: string, body: string, audience: "Everyone"
 }
 
 export async function fetchDrafts(): Promise<Draft[]> {
+  const localId = localProfileId();
+  if (isLocalProfileId(localId)) {
+    return readLocalDrafts()
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+      .map((draft) => ({
+        id: draft.id,
+        body: draft.body,
+        savedAt: age(draft.updated_at),
+      }));
+  }
+
   const authorId = await currentUserId();
   const { data, error } = await supabase
     .from("drafts")
@@ -423,6 +497,12 @@ export async function fetchDrafts(): Promise<Draft[]> {
 }
 
 export async function deleteDraft(id: string) {
+  const localId = localProfileId();
+  if (isLocalProfileId(localId) || id.startsWith("local-draft-")) {
+    writeLocalDrafts(readLocalDrafts().filter((draft) => draft.id !== id));
+    return;
+  }
+
   const { error } = await supabase.from("drafts").delete().eq("id", id);
   if (error) throw error;
 }

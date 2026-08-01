@@ -130,6 +130,21 @@ function SettingsPage() {
       return;
     }
 
+    const nextProfile = {
+      ...profile,
+      display_name: displayName,
+      handle: normalizedHandle,
+      bio: nextBio,
+      initials: displayName.slice(0, 2).toUpperCase(),
+    };
+
+    if (profile.id.startsWith("local-")) {
+      localStorage.setItem("pulse_local_user", JSON.stringify(nextProfile));
+      setProfile(nextProfile);
+      toast.success("Account details updated");
+      return;
+    }
+
     setBusy(true);
     const { error } = await supabase
       .from("profiles")
@@ -147,13 +162,7 @@ function SettingsPage() {
       return;
     }
 
-    setProfile({
-      ...profile,
-      display_name: displayName,
-      handle: normalizedHandle,
-      bio: nextBio,
-      initials: displayName.slice(0, 2).toUpperCase(),
-    });
+    setProfile(nextProfile);
     toast.success("Account details updated");
   }
 
