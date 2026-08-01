@@ -3,6 +3,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   ArrowLeft,
   BadgeCheck,
+  ChevronLeft,
+  ChevronRight,
   ImagePlus,
   Images,
   Info,
@@ -32,6 +34,7 @@ import { cn } from "@/lib/utils";
 
 type MediaFilter = "all" | "images" | "videos" | "urls";
 type PendingAttachment = ChatAttachment & { objectUrl?: string };
+type LightboxMedia = ChatAttachment & { messageId?: string };
 
 export const Route = createFileRoute("/messages/$conversationId")({
   loader: ({ params }) => {
@@ -93,6 +96,7 @@ function Thread({ initialConversation }: { initialConversation: Conversation }) 
   const [pending, setPending] = useState<PendingAttachment[]>([]);
   const [mediaFilter, setMediaFilter] = useState<MediaFilter>("all");
   const [chatDeleted, setChatDeleted] = useState<"me" | "both" | null>(null);
+  const [lightbox, setLightbox] = useState<{ items: LightboxMedia[]; index: number } | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -116,6 +120,9 @@ function Thread({ initialConversation }: { initialConversation: Conversation }) 
           return true;
         }),
     [visibleMessages, mediaFilter],
+  );
+  const visualMediaItems = mediaItems.filter(
+    (attachment) => attachment.type === "image" || attachment.type === "video",
   );
 
   useEffect(() => {
@@ -225,6 +232,12 @@ function Thread({ initialConversation }: { initialConversation: Conversation }) 
     );
   }
 
+  function openLightbox(items: LightboxMedia[], itemId: string) {
+    const visualItems = items.filter((item) => item.type === "image" || item.type === "video");
+    const index = visualItems.findIndex((item) => item.id === itemId);
+    if (visualItems.length > 0) setLightbox({ items: visualItems, index: Math.max(0, index) });
+  }
+
   if (chatDeleted) {
     return (
       <section className="grid min-h-[70vh] place-items-center px-6 text-center">
@@ -321,7 +334,11 @@ function Thread({ initialConversation }: { initialConversation: Conversation }) 
       {isNewChat ? <UserLookup onSelect={startChat} /> : null}
 
       {mediaFilter !== "all" ? (
-        <MediaPanel items={mediaItems} onDelete={deleteAttachment} />
+        <MediaPanel
+          items={mediaItems}
+          onDelete={deleteAttachment}
+          onOpen={(itemId) => openLightbox(visualMediaItems, itemId)}
+        />
       ) : (
         <div className="flex flex-1 flex-col gap-1 px-4 py-5 sm:px-6">
           <div className="mx-auto mb-4 max-w-sm rounded-2xl bg-surface/60 px-4 py-3 text-center">
@@ -350,6 +367,15 @@ function Thread({ initialConversation }: { initialConversation: Conversation }) 
                 endsGroup={endsGroup}
                 onDeleteMessage={deleteMessage}
                 onDeleteAttachment={deleteAttachment}
+                onOpenLightbox={(itemId) =>
+                  openLightbox(
+                    (message.attachments ?? []).map((attachment) => ({
+                      ...attachment,
+                      messageId: message.id,
+                    })),
+                    itemId,
+                  )
+                }
               />
             );
           })}
@@ -369,6 +395,17 @@ function Thread({ initialConversation }: { initialConversation: Conversation }) 
           <div ref={endRef} />
         </div>
       )}
+
+      {lightbox ? (
+        <MediaLightbox
+          items={lightbox.items}
+          index={lightbox.index}
+          onClose={() => setLightbox(null)}
+          onIndexChange={(index) =>
+            setLightbox((current) => (current ? { ...current, index } : current))
+          }
+        />
+      ) : null}
 
       <form
         onSubmit={(e) => {
@@ -514,6 +551,7 @@ function MessageBubble({
   endsGroup,
   onDeleteMessage,
   onDeleteAttachment,
+  onOpenLightbox,
 }: {
   message: ChatMessage;
   mine: boolean;
@@ -521,6 +559,7 @@ function MessageBubble({
   endsGroup: boolean;
   onDeleteMessage: (id: string, scope: "me" | "both") => void;
   onDeleteAttachment: (messageId: string, attachmentId: string, scope: "me" | "both") => void;
+  onOpenLightbox: (attachmentId: string) => void;
 }) {
   if (message.deletedForBoth) {
     return (
@@ -557,6 +596,7 @@ function MessageBubble({
             attachments={message.attachments}
             mine={mine}
             onDeleteAttachment={onDeleteAttachment}
+            onOpenLightbox={onOpenLightbox}
           />
         ) : null}
       </div>
@@ -591,29 +631,44 @@ function AttachmentGrid({
   attachments,
   mine,
   onDeleteAttachment,
+  onOpenLightbox,
 }: {
   messageId: string;
   attachments: ChatAttachment[];
   mine: boolean;
   onDeleteAttachment: (messageId: string, attachmentId: string, scope: "me" | "both") => void;
+  onOpenLightbox: (attachmentId: string) => void;
 }) {
   return (
     <div className={cn("mt-2 grid gap-1.5", attachments.length > 1 && "grid-cols-2")}>
       {attachments.map((attachment) => (
         <div key={attachment.id} className="overflow-hidden rounded-2xl bg-background/20">
           {attachment.type === "image" ? (
-            <img
-              src={attachment.url}
-              alt={attachment.label ?? "Message image"}
-              className="aspect-[4/3] w-full object-cover"
-            />
+            <button
+              type="button"
+              onClick={() => onOpenLightbox(attachment.id)}
+              className="block w-full overflow-hidden text-left"
+            >
+              <img
+                src={attachment.url}
+                alt={attachment.label ?? "Message image"}
+                className="aspect-[4/3] w-full object-cover transition-transform hover:scale-105"
+              />
+            </button>
           ) : attachment.type === "video" ? (
-            <video
-              src={attachment.url}
-              controls
-              preload="metadata"
-              className="aspect-video w-full bg-black object-cover"
-            />
+            <button
+              type="button"
+              onClick={() => onOpenLightbox(attachment.id)}
+              className="block w-full overflow-hidden text-left"
+            >
+              <video
+                src={attachment.url}
+                muted
+                preload="metadata"
+                className="aspect-video w-full bg-black object-cover"
+              />
+              <span className="sr-only">Open video {attachment.label ?? attachment.id}</span>
+            </button>
           ) : (
             <a
               href={attachment.url}
@@ -653,9 +708,11 @@ function AttachmentGrid({
 function MediaPanel({
   items,
   onDelete,
+  onOpen,
 }: {
   items: Array<ChatAttachment & { messageId: string; mine: boolean }>;
   onDelete: (messageId: string, attachmentId: string, scope: "me" | "both") => void;
+  onOpen: (attachmentId: string) => void;
 }) {
   return (
     <div className="grid gap-3 px-4 py-5 sm:grid-cols-2 sm:px-6 xl:grid-cols-3">
@@ -670,18 +727,31 @@ function MediaPanel({
             className="overflow-hidden rounded-xl border border-border bg-surface"
           >
             {item.type === "image" ? (
-              <img
-                src={item.url}
-                alt={item.label ?? "Shared image"}
-                className="aspect-[4/3] w-full object-cover"
-              />
+              <button
+                type="button"
+                onClick={() => onOpen(item.id)}
+                className="block w-full overflow-hidden text-left"
+              >
+                <img
+                  src={item.url}
+                  alt={item.label ?? "Shared image"}
+                  className="aspect-[4/3] w-full object-cover transition-transform hover:scale-105"
+                />
+              </button>
             ) : item.type === "video" ? (
-              <video
-                src={item.url}
-                controls
-                preload="metadata"
-                className="aspect-video w-full bg-black object-cover"
-              />
+              <button
+                type="button"
+                onClick={() => onOpen(item.id)}
+                className="block w-full overflow-hidden text-left"
+              >
+                <video
+                  src={item.url}
+                  muted
+                  preload="metadata"
+                  className="aspect-video w-full bg-black object-cover"
+                />
+                <span className="sr-only">Open video {item.label ?? item.id}</span>
+              </button>
             ) : (
               <a
                 href={item.url}
@@ -711,6 +781,142 @@ function MediaPanel({
             </div>
           </div>
         ))
+      )}
+    </div>
+  );
+}
+
+function MediaLightbox({
+  items,
+  index,
+  onClose,
+  onIndexChange,
+}: {
+  items: LightboxMedia[];
+  index: number;
+  onClose: () => void;
+  onIndexChange: (index: number) => void;
+}) {
+  const current = items[index];
+  const hasMultiple = items.length > 1;
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+      if (event.key === "ArrowLeft" && hasMultiple) {
+        onIndexChange((index - 1 + items.length) % items.length);
+      }
+      if (event.key === "ArrowRight" && hasMultiple) {
+        onIndexChange((index + 1) % items.length);
+      }
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [hasMultiple, index, items.length, onClose, onIndexChange]);
+
+  if (!current) return null;
+
+  const previous = () => onIndexChange((index - 1 + items.length) % items.length);
+  const next = () => onIndexChange((index + 1) % items.length);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Message media viewer"
+      className="fixed inset-0 z-50 grid grid-rows-[auto_minmax(0,1fr)_auto] bg-background/95 p-3 backdrop-blur sm:p-5"
+      onClick={onClose}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate font-display text-sm font-bold">
+            {current.label ?? (current.type === "video" ? "Shared video" : "Shared image")}
+          </p>
+          <p className="text-xs tabular-nums text-muted-foreground">
+            {index + 1} / {items.length}
+          </p>
+        </div>
+        <button
+          type="button"
+          aria-label="Close media viewer"
+          onClick={onClose}
+          className="grid size-10 shrink-0 place-items-center rounded-full bg-surface text-foreground hover:bg-surface-2"
+        >
+          <X className="size-5" />
+        </button>
+      </div>
+
+      <div
+        className="relative grid min-h-0 place-items-center py-4"
+        onClick={(event) => event.stopPropagation()}
+      >
+        {current.type === "image" ? (
+          <img
+            src={current.url}
+            alt={current.label ?? "Shared image"}
+            className="max-h-full max-w-full rounded-2xl object-contain shadow-2xl"
+          />
+        ) : (
+          <video
+            src={current.url}
+            controls
+            autoPlay
+            className="max-h-full max-w-full rounded-2xl bg-black shadow-2xl"
+          />
+        )}
+
+        {hasMultiple ? (
+          <>
+            <button
+              type="button"
+              aria-label="Previous media"
+              onClick={previous}
+              className="absolute left-1 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-surface/90 text-foreground shadow-lift hover:bg-surface sm:left-4"
+            >
+              <ChevronLeft className="size-5" />
+            </button>
+            <button
+              type="button"
+              aria-label="Next media"
+              onClick={next}
+              className="absolute right-1 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-surface/90 text-foreground shadow-lift hover:bg-surface sm:right-4"
+            >
+              <ChevronRight className="size-5" />
+            </button>
+          </>
+        ) : null}
+      </div>
+
+      {hasMultiple ? (
+        <div className="mx-auto flex max-w-full gap-2 overflow-x-auto pb-1">
+          {items.map((item, itemIndex) => (
+            <button
+              key={`${item.id}-${itemIndex}`}
+              type="button"
+              aria-label={`Open media ${itemIndex + 1}`}
+              aria-current={itemIndex === index}
+              onClick={(event) => {
+                event.stopPropagation();
+                onIndexChange(itemIndex);
+              }}
+              className={cn(
+                "h-14 w-20 shrink-0 overflow-hidden rounded-lg border bg-surface",
+                itemIndex === index
+                  ? "border-signal"
+                  : "border-border opacity-70 hover:opacity-100",
+              )}
+            >
+              {item.type === "image" ? (
+                <img src={item.url} alt="" className="size-full object-cover" />
+              ) : (
+                <video src={item.url} muted preload="metadata" className="size-full object-cover" />
+              )}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <span />
       )}
     </div>
   );
