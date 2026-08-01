@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { createFileRoute, Link, notFound, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeft,
   BadgeCheck,
@@ -7,7 +7,6 @@ import {
   ChevronRight,
   ImagePlus,
   Images,
-  Info,
   Link2,
   Search,
   Send,
@@ -30,6 +29,7 @@ import {
 import { requireClientSession } from "@/lib/require-auth";
 import {
   createConversationWith,
+  deleteConversationForMe,
   deleteMessageAttachmentForBoth,
   deleteMessageForBoth,
   deleteMessageForMe,
@@ -121,6 +121,7 @@ function Thread({ initialConversation }: { initialConversation: Conversation }) 
   const endRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const navigate = useNavigate();
   const realConversation =
     /^[0-9a-f]{8}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{12}$/i.test(conversation.id);
 
@@ -321,6 +322,41 @@ function Thread({ initialConversation }: { initialConversation: Conversation }) 
     if (visualItems.length > 0) setLightbox({ items: visualItems, index: Math.max(0, index) });
   }
 
+  async function deleteChatForMe() {
+    if (conversation.id === "new") {
+      setChatDeleted("me");
+      return;
+    }
+
+    try {
+      await deleteConversationForMe(conversation.id);
+      setChatDeleted("me");
+      toast.success("Conversation deleted");
+      setTimeout(() => void navigate({ to: "/messages" }), 700);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Conversation could not be deleted");
+    }
+  }
+
+  function insertEmoji() {
+    const textarea = inputRef.current;
+    const emoji = "🙂";
+    if (!textarea) {
+      setValue((current) => `${current}${emoji}`.slice(0, 1000));
+      return;
+    }
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const next = `${value.slice(0, start)}${emoji}${value.slice(end)}`.slice(0, 1000);
+    setValue(next);
+    requestAnimationFrame(() => {
+      const position = Math.min(start + emoji.length, next.length);
+      textarea.focus();
+      textarea.setSelectionRange(position, position);
+    });
+  }
+
   if (chatDeleted) {
     return (
       <section className="grid min-h-[70vh] place-items-center px-6 text-center">
@@ -372,18 +408,10 @@ function Thread({ initialConversation }: { initialConversation: Conversation }) 
         <button
           type="button"
           aria-label="Delete chat for me"
-          onClick={() => setChatDeleted("me")}
+          onClick={() => void deleteChatForMe()}
           className="grid size-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-surface hover:text-destructive"
         >
           <Trash2 className="size-5" />
-        </button>
-        <button
-          type="button"
-          aria-label="Delete chat for both parties"
-          onClick={() => setChatDeleted("both")}
-          className="grid size-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-surface hover:text-destructive"
-        >
-          <Info className="size-5" />
         </button>
       </header>
 
@@ -564,6 +592,7 @@ function Thread({ initialConversation }: { initialConversation: Conversation }) 
           <button
             type="button"
             aria-label="Add emoji"
+            onClick={insertEmoji}
             className="grid size-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
           >
             <Smile className="size-4" />

@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Image, Smile, CalendarClock, MapPin, X } from "lucide-react";
+import { Image, Smile, X } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar } from "./avatar";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ export function Composer({
     [],
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { profile } = useProfile();
 
   const user = profile
@@ -63,6 +64,25 @@ export function Composer({
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
+  function insertEmoji() {
+    const textarea = textareaRef.current;
+    const emoji = "🙂";
+    if (!textarea) {
+      setValue((current) => `${current}${emoji}`);
+      return;
+    }
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const next = `${value.slice(0, start)}${emoji}${value.slice(end)}`.slice(0, LIMIT);
+    setValue(next);
+    requestAnimationFrame(() => {
+      const position = Math.min(start + emoji.length, next.length);
+      textarea.focus();
+      textarea.setSelectionRange(position, position);
+    });
+  }
+
   return (
     <div className="border-b border-border px-4 py-4 sm:px-6">
       <input
@@ -81,6 +101,7 @@ export function Composer({
           </label>
           <textarea
             id="composer"
+            ref={textareaRef}
             value={value}
             onChange={(e) => setValue(e.target.value)}
             rows={2}
@@ -146,20 +167,14 @@ export function Composer({
               >
                 <Image className="size-[18px]" />
               </button>
-              {[
-                { Icon: Smile, label: "Add emoji" },
-                { Icon: CalendarClock, label: "Schedule post" },
-                { Icon: MapPin, label: "Add location" },
-              ].map(({ Icon, label }) => (
-                <button
-                  key={label}
-                  type="button"
-                  aria-label={label}
-                  className="grid size-9 shrink-0 place-items-center rounded-full transition-colors hover:bg-surface-2"
-                >
-                  <Icon className="size-[18px]" />
-                </button>
-              ))}
+              <button
+                type="button"
+                aria-label="Add emoji"
+                onClick={insertEmoji}
+                className="grid size-9 shrink-0 place-items-center rounded-full transition-colors hover:bg-surface-2"
+              >
+                <Smile className="size-[18px]" />
+              </button>
             </div>
             <div className="flex shrink-0 items-center gap-3">
               {value.length > 0 && (

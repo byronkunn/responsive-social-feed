@@ -887,6 +887,16 @@ export async function deleteMessageForBoth(messageId: string) {
   if (error) throw error;
 }
 
+export async function deleteConversationForMe(conversationId: string) {
+  const userId = await currentUserId();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any)
+    .from("conversation_participants")
+    .delete()
+    .match({ conversation_id: conversationId, user_id: userId });
+  if (error) throw error;
+}
+
 export async function deleteMessageAttachmentForBoth(messageId: string, attachmentId: string) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (supabase as any).rpc("delete_message_attachment_for_everyone", {

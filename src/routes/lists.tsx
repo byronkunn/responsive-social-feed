@@ -26,12 +26,12 @@ export const Route = createFileRoute("/lists")({
       { title: "Lists — curated feeds on Pulse" },
       {
         name: "description",
-        content: "Follow hand-curated lists of people and keep separate feeds for each interest.",
+        content: "Create hand-curated lists of people and keep separate feeds for each interest.",
       },
       { property: "og:title", content: "Lists — curated feeds on Pulse" },
       {
         property: "og:description",
-        content: "Follow hand-curated lists of people and keep separate feeds for each interest.",
+        content: "Create hand-curated lists of people and keep separate feeds for each interest.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -42,13 +42,6 @@ export const Route = createFileRoute("/lists")({
 
 function Lists() {
   const [allLists, setAllLists] = useState<PulseList[]>([]);
-  const [followed, setFollowed] = useState<string[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem("pulse.followed-lists") || "[]") as string[];
-    } catch {
-      return [];
-    }
-  });
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [open, setOpen] = useState(false);
@@ -78,14 +71,9 @@ function Lists() {
     };
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem("pulse.followed-lists", JSON.stringify(followed));
-  }, [followed]);
-
   async function handleCreateList(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
     try {
       await createList(name, description, isPrivate);
       const lists = await fetchLists();
@@ -94,7 +82,6 @@ function Lists() {
       toast.error(error instanceof Error ? error.message : "List could not be created");
       return;
     }
-    setFollowed((prev) => [...prev, slug]);
     setName("");
     setDescription("");
     setIsPrivate(false);
@@ -185,7 +172,6 @@ function Lists() {
           </li>
         ) : (
           allLists.map((list) => {
-            const isFollowed = followed.includes(list.slug);
             return (
               <li
                 key={list.slug}
@@ -216,23 +202,6 @@ function Lists() {
                       <span className="text-xs text-muted-foreground tabular-nums">
                         {list.members} members · {list.posts.toLocaleString()} posts
                       </span>
-                      <Button
-                        size="sm"
-                        variant={isFollowed ? "secondary" : "default"}
-                        onClick={() => {
-                          setFollowed((prev) =>
-                            prev.includes(list.slug)
-                              ? prev.filter((s) => s !== list.slug)
-                              : [...prev, list.slug],
-                          );
-                          toast.success(
-                            isFollowed ? `Unfollowed ${list.name}` : `Following ${list.name}`,
-                          );
-                        }}
-                        className="ml-auto shrink-0 rounded-full font-semibold"
-                      >
-                        {isFollowed ? "Following" : "Follow"}
-                      </Button>
                     </div>
                   </div>
                 </div>

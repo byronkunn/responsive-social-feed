@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { X, Image, Smile, CalendarClock, MapPin, Globe2 } from "lucide-react";
+import { X, Image, Smile, Globe2 } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar } from "@/components/pulse/avatar";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,7 @@ function ComposePage() {
   const [busy, setBusy] = useState(false);
   const [files, setFiles] = useState<{ file: File; previewUrl: string }[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const navigate = useNavigate();
   const { profile } = useProfile();
 
@@ -88,6 +89,25 @@ function ComposePage() {
     files.forEach((f) => URL.revokeObjectURL(f.previewUrl));
     setFiles([]);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function insertEmoji() {
+    const textarea = textareaRef.current;
+    const emoji = "🙂";
+    if (!textarea) {
+      setValue((current) => `${current}${emoji}`.slice(0, LIMIT));
+      return;
+    }
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const next = `${value.slice(0, start)}${emoji}${value.slice(end)}`.slice(0, LIMIT);
+    setValue(next);
+    requestAnimationFrame(() => {
+      const position = Math.min(start + emoji.length, next.length);
+      textarea.focus();
+      textarea.setSelectionRange(position, position);
+    });
   }
 
   return (
@@ -174,6 +194,7 @@ function ComposePage() {
           </label>
           <textarea
             id="compose-full"
+            ref={textareaRef}
             autoFocus
             value={value}
             onChange={(e) => setValue(e.target.value)}
@@ -232,20 +253,14 @@ function ComposePage() {
           >
             <Image className="size-[18px]" />
           </button>
-          {[
-            { Icon: Smile, label: "Add emoji" },
-            { Icon: CalendarClock, label: "Schedule post" },
-            { Icon: MapPin, label: "Add location" },
-          ].map(({ Icon, label }) => (
-            <button
-              key={label}
-              type="button"
-              aria-label={label}
-              className="grid size-10 place-items-center rounded-full transition-colors hover:bg-surface-2"
-            >
-              <Icon className="size-[18px]" />
-            </button>
-          ))}
+          <button
+            type="button"
+            aria-label="Add emoji"
+            onClick={insertEmoji}
+            className="grid size-10 place-items-center rounded-full transition-colors hover:bg-surface-2"
+          >
+            <Smile className="size-[18px]" />
+          </button>
         </div>
         <span
           className={`text-sm tabular-nums ${remaining < 0 ? "text-destructive" : "text-muted-foreground"}`}
