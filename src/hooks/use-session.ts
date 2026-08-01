@@ -4,11 +4,33 @@ import { supabase } from "@/integrations/supabase/client";
 
 export type PulseProfile = {
   id: string;
+  email?: string;
   handle: string;
   display_name: string;
   bio: string;
   initials: string;
 };
+
+export function localProfileFromStorage(): PulseProfile | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem("pulse_local_user");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PulseProfile>;
+    if (!parsed.id || !parsed.display_name || !parsed.handle || !parsed.initials) return null;
+    return {
+      id: parsed.id,
+      ...(parsed.email ? { email: parsed.email } : {}),
+      handle: parsed.handle,
+      display_name: parsed.display_name,
+      bio: parsed.bio ?? "",
+      initials: parsed.initials,
+    };
+  } catch {
+    localStorage.removeItem("pulse_local_user");
+    return null;
+  }
+}
 
 export function useSession() {
   const [session, setSession] = useState<Session | null>(null);
@@ -46,7 +68,7 @@ export function useProfile() {
   useEffect(() => {
     let active = true;
     if (!userId) {
-      setProfile(null);
+      setProfile(localProfileFromStorage());
       setProfileLoading(false);
       setProfileError(null);
       return;

@@ -8,6 +8,7 @@ import { lovable } from "@/integrations/lovable/index";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { localProfileFromStorage, type PulseProfile } from "@/hooks/use-session";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -43,6 +44,38 @@ function AuthPage() {
   const navigate = useNavigate();
   const router = useRouter();
 
+  function makeLocalProfile(name: string, emailAddress: string): PulseProfile {
+    const base = name.trim() || emailAddress.split("@")[0] || "Pulse Member";
+    const handle =
+      base
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "")
+        .slice(0, 24) || "member";
+    const initials = base
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join("")
+      .toUpperCase();
+
+    return {
+      id: `local-${emailAddress.toLowerCase()}`,
+      email: emailAddress.toLowerCase(),
+      display_name: base,
+      handle,
+      initials: initials || "PM",
+      bio: "Local prototype account. Connect Supabase email confirmation for production access.",
+    };
+  }
+
+  async function finishLocalAccess(profile: PulseProfile, message: string) {
+    localStorage.setItem("pulse_local_user", JSON.stringify(profile));
+    toast.success(message);
+    await router.invalidate();
+    navigate({ to: "/" });
+  }
+
   async function finishSignedIn(message: string) {
     localStorage.removeItem("pulse_local_user");
     toast.success(message);
@@ -59,12 +92,18 @@ function AuthPage() {
     }
     setBusy(true);
 
-    const name = displayName.trim() || parsed.data.email.split("@")[0];
+    const emailAddress = parsed.data.email ?? email.trim();
+    const name = displayName.trim() || emailAddress.split("@")[0] || "Pulse Member";
 
     try {
       if (mode === "signin") {
         const { error } = await supabase.auth.signInWithPassword(parsed.data);
         if (error) {
+          const localProfile = localProfileFromStorage();
+          if (localProfile?.email === emailAddress.toLowerCase()) {
+            await finishLocalAccess(localProfile, "Signed in locally");
+            return;
+          }
           toast.error(error.message);
           return;
         }
@@ -83,8 +122,10 @@ function AuthPage() {
         }
 
         if (!data.session) {
-          toast.error("Account created, but automatic sign-in was unavailable. Try signing in.");
-          setMode("signin");
+          await finishLocalAccess(
+            makeLocalProfile(name, emailAddress),
+            "Account created. Email confirmation is still needed for production auth.",
+          );
           return;
         }
 

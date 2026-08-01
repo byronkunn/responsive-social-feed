@@ -46,6 +46,7 @@ export function AppShell({ children, rail = true }: { children: React.ReactNode;
   const name = profile?.display_name ?? currentUser.name;
   const handle = profile?.handle ?? currentUser.handle;
   const initials = (profile?.initials ?? currentUser.initials).slice(0, 2).toUpperCase();
+  const signedIn = Boolean(session || profile);
 
   async function signOut() {
     await queryClient.cancelQueries();
@@ -90,7 +91,7 @@ export function AppShell({ children, rail = true }: { children: React.ReactNode;
           </Button>
         </div>
 
-        {session ? (
+        {signedIn ? (
           <div className="flex items-center gap-3 rounded-2xl p-2 xl:hover:bg-surface">
             <Avatar initials={initials} />
             <div className="hidden min-w-0 flex-1 xl:block">
