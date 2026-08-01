@@ -1,0 +1,223 @@
+import { useState } from "react";
+import { createFileRoute, Link, useNavigate, useRouter } from "@tanstack/react-router";
+import { Radio, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { z } from "zod";
+import { supabase } from "@/integrations/supabase/client";
+import { lovable } from "@/integrations/lovable/index";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+
+export const Route = createFileRoute("/auth")({
+  head: () => ({
+    meta: [
+      { title: "Sign in or join Pulse" },
+      {
+        name: "description",
+        content: "Create a Pulse account or sign back in to post, spark and follow the feed.",
+      },
+      { property: "og:title", content: "Sign in or join Pulse" },
+      {
+        property: "og:description",
+        content: "Create a Pulse account or sign back in to post, spark and follow the feed.",
+      },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+    ],
+  }),
+  component: AuthPage,
+});
+
+const credentials = z.object({
+  email: z.string().trim().email({ message: "Enter a valid email address" }).max(255),
+  password: z.string().min(8, { message: "Password must be at least 8 characters" }).max(72),
+});
+
+function AuthPage() {
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const navigate = useNavigate();
+  const router = useRouter();
+
+  async function finishSignedIn(message: string) {
+    localStorage.removeItem("pulse_local_user");
+    toast.success(message);
+    await router.invalidate();
+    navigate({ to: "/" });
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const parsed = credentials.safeParse({ email, password });
+    if (!parsed.success) {
+      toast.error(parsed.error.issues[0]?.message ?? "Check your details");
+      return;
+    }
+    setBusy(true);
+
+    const name = displayName.trim() || parsed.data.email.split("@")[0];
+
+    try {
+      if (mode === "signin") {
+        const { error } = await supabase.auth.signInWithPassword(parsed.data);
+        if (error) {
+          toast.error(error.message);
+          return;
+        }
+        await finishSignedIn("Signed in");
+        return;
+      } else {
+        const { data, error } = await supabase.auth.signUp({
+          ...parsed.data,
+          options: {
+            data: { display_name: name },
+          },
+        });
+        if (error) {
+          toast.error(error.message);
+          return;
+        }
+
+        if (!data.session) {
+          toast.error("Account created, but automatic sign-in was unavailable. Try signing in.");
+          setMode("signin");
+          return;
+        }
+
+        await finishSignedIn("Account created");
+        return;
+      }
+    } catch {
+      toast.error("Authentication is unavailable right now. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function google() {
+    setBusy(true);
+    const result = await lovable.auth.signInWithOAuth("google", {
+      redirect_uri: window.location.origin,
+    });
+    if (result.error) {
+      setBusy(false);
+      toast.error("Google sign-in failed. Try again.");
+      return;
+    }
+    if (result.redirected) return;
+    await router.invalidate();
+    navigate({ to: "/" });
+  }
+
+  return (
+    <main className="grid min-h-screen place-items-center px-4 py-10">
+      <div className="w-full max-w-sm">
+        <Link to="/" className="mb-8 flex items-center gap-2 font-display text-2xl font-black">
+          <Radio className="size-7 text-signal" />
+          Pulse
+        </Link>
+
+        <h1 className="font-display text-3xl font-black tracking-tight">
+          {mode === "signin" ? "Welcome back" : "Join Pulse"}
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {mode === "signin"
+            ? "Sign in to pick up your feed where you left it."
+            : "A smaller, friendlier place to think out loud."}
+        </p>
+
+        <div className="mt-6 grid grid-cols-2 gap-1 rounded-full bg-surface p-1">
+          {(["signin", "signup"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              className={`rounded-full py-2 font-display text-sm font-bold transition-colors ${
+                mode === m ? "bg-surface-2 text-foreground" : "text-muted-foreground"
+              }`}
+            >
+              {m === "signin" ? "Sign in" : "Create account"}
+            </button>
+          ))}
+        </div>
+
+        <form onSubmit={submit} className="mt-6 space-y-4">
+          {mode === "signup" && (
+            <div className="space-y-1.5">
+              <Label htmlFor="name">Display name</Label>
+              <Input
+                id="name"
+                value={displayName}
+                maxLength={50}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="Ada Rowe"
+              />
+            </div>
+          )}
+          <div className="space-y-1.5">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              required
+            />
+          </div>
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="password">Password</Label>
+              {mode === "signin" && (
+                <Link to="/forgot-password" className="text-xs text-signal hover:underline">
+                  Forgot?
+                </Link>
+              )}
+            </div>
+            <Input
+              id="password"
+              type="password"
+              autoComplete={mode === "signin" ? "current-password" : "new-password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="At least 8 characters"
+              required
+            />
+          </div>
+          <Button
+            type="submit"
+            disabled={busy}
+            className="h-11 w-full rounded-full font-display font-bold"
+          >
+            {busy && <Loader2 className="size-4 animate-spin" />}
+            {mode === "signin" ? "Sign in" : "Create account"}
+          </Button>
+        </form>
+
+        <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
+          <span className="h-px flex-1 bg-border" />
+          or
+          <span className="h-px flex-1 bg-border" />
+        </div>
+
+        <Button
+          variant="secondary"
+          disabled={busy}
+          onClick={google}
+          className="h-11 w-full rounded-full font-display font-bold"
+        >
+          Continue with Google
+        </Button>
+
+        <p className="mt-6 text-center text-xs leading-relaxed text-muted-foreground">
+          By continuing you agree to be reasonably kind to strangers.
+        </p>
+      </div>
+    </main>
+  );
+}

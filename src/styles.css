@@ -1,0 +1,112 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Pulse design system — warm ink surfaces with an amber signal accent.
+ * All colors are oklch semantic tokens. Never hardcode colors in components.
+ */
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+  --color-signal: var(--signal);
+  --color-signal-foreground: var(--signal-foreground);
+  --color-echo: var(--echo);
+  --color-spark: var(--spark);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+}
+
+:root {
+  --radius: 0.9rem;
+  --background: oklch(0.17 0.012 65);
+  --foreground: oklch(0.96 0.008 80);
+  --surface: oklch(0.21 0.014 66);
+  --surface-2: oklch(0.25 0.016 66);
+  --card: oklch(0.21 0.014 66);
+  --card-foreground: oklch(0.96 0.008 80);
+  --popover: oklch(0.21 0.014 66);
+  --popover-foreground: oklch(0.96 0.008 80);
+  --primary: oklch(0.82 0.16 78);
+  --primary-foreground: oklch(0.2 0.03 70);
+  --secondary: oklch(0.27 0.016 66);
+  --secondary-foreground: oklch(0.96 0.008 80);
+  --muted: oklch(0.25 0.014 66);
+  --muted-foreground: oklch(0.72 0.018 76);
+  --accent: oklch(0.28 0.02 70);
+  --accent-foreground: oklch(0.96 0.008 80);
+  --destructive: oklch(0.62 0.2 22);
+  --destructive-foreground: oklch(0.97 0.01 80);
+  --border: oklch(0.3 0.014 68);
+  --input: oklch(0.3 0.014 68);
+  --ring: oklch(0.82 0.16 78);
+  --signal: oklch(0.82 0.16 78);
+  --signal-foreground: oklch(0.2 0.03 70);
+  --echo: oklch(0.74 0.14 165);
+  --spark: oklch(0.68 0.19 12);
+  --gradient-signal: linear-gradient(135deg, oklch(0.86 0.15 92), oklch(0.75 0.17 55));
+  --shadow-lift: 0 18px 40px -24px oklch(0 0 0 / 0.8);
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+}
+
+@utility gradient-signal {
+  background-image: var(--gradient-signal);
+}
+
+@utility shadow-lift {
+  box-shadow: var(--shadow-lift);
+}
