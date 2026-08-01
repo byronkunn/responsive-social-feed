@@ -31,6 +31,7 @@ import { Route as ProfileFollowingRouteImport } from './routes/profile.following
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as SettingsSecurityRouteImport } from './routes/settings.security'
 import { Route as TagTagRouteImport } from './routes/tag.$tag'
+import { Route as UserHandleRouteImport } from './routes/user.$handle'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -142,6 +143,11 @@ const TagTagRoute = TagTagRouteImport.update({
   path: '/tag/$tag',
   getParentRoute: () => rootRouteImport,
 } as any)
+const UserHandleRoute = UserHandleRouteImport.update({
+  id: '/user/$handle',
+  path: '/user/$handle',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -163,6 +169,7 @@ export interface FileRoutesByFullPath {
   '/profile/following': typeof ProfileFollowingRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/tag/$tag': typeof TagTagRoute
+  '/user/$handle': typeof UserHandleRoute
   '/messages/': typeof MessagesIndexRoute
   '/profile/': typeof ProfileIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -187,6 +194,7 @@ export interface FileRoutesByTo {
   '/profile/following': typeof ProfileFollowingRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/tag/$tag': typeof TagTagRoute
+  '/user/$handle': typeof UserHandleRoute
   '/messages': typeof MessagesIndexRoute
   '/profile': typeof ProfileIndexRoute
   '/settings': typeof SettingsIndexRoute
@@ -212,6 +220,7 @@ export interface FileRoutesById {
   '/profile/following': typeof ProfileFollowingRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/tag/$tag': typeof TagTagRoute
+  '/user/$handle': typeof UserHandleRoute
   '/messages/': typeof MessagesIndexRoute
   '/profile/': typeof ProfileIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -238,6 +247,7 @@ export interface FileRouteTypes {
     | '/profile/following'
     | '/settings/security'
     | '/tag/$tag'
+    | '/user/$handle'
     | '/messages/'
     | '/profile/'
     | '/settings/'
@@ -262,6 +272,7 @@ export interface FileRouteTypes {
     | '/profile/following'
     | '/settings/security'
     | '/tag/$tag'
+    | '/user/$handle'
     | '/messages'
     | '/profile'
     | '/settings'
@@ -286,6 +297,7 @@ export interface FileRouteTypes {
     | '/profile/following'
     | '/settings/security'
     | '/tag/$tag'
+    | '/user/$handle'
     | '/messages/'
     | '/profile/'
     | '/settings/'
@@ -311,6 +323,7 @@ export interface RootRouteChildren {
   ProfileFollowingRoute: typeof ProfileFollowingRoute
   SettingsSecurityRoute: typeof SettingsSecurityRoute
   TagTagRoute: typeof TagTagRoute
+  UserHandleRoute: typeof UserHandleRoute
   MessagesIndexRoute: typeof MessagesIndexRoute
   ProfileIndexRoute: typeof ProfileIndexRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
@@ -472,6 +485,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TagTagRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/user/$handle': {
+      id: '/user/$handle'
+      path: '/user/$handle'
+      fullPath: '/user/$handle'
+      preLoaderRoute: typeof UserHandleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -495,6 +515,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProfileFollowingRoute: ProfileFollowingRoute,
   SettingsSecurityRoute: SettingsSecurityRoute,
   TagTagRoute: TagTagRoute,
+  UserHandleRoute: UserHandleRoute,
   MessagesIndexRoute: MessagesIndexRoute,
   ProfileIndexRoute: ProfileIndexRoute,
   SettingsIndexRoute: SettingsIndexRoute,

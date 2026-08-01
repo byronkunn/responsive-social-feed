@@ -1,11 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ElementType } from "react";
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-import { ArrowLeft, BadgeCheck, Flame, MessageCircle, Repeat2, Share2 } from "lucide-react";
+import {
+  ArrowLeft,
+  BadgeCheck,
+  Bookmark,
+  Flame,
+  MessageCircle,
+  Repeat2,
+  Share2,
+} from "lucide-react";
 import { AppShell } from "@/components/pulse/app-shell";
 import { Avatar } from "@/components/pulse/avatar";
 import { Button } from "@/components/ui/button";
 import { currentUser, repliesFor, type Reply } from "@/lib/pulse-data";
-import { createReply, fetchPostById, fetchReplies } from "@/lib/social-api";
+import { createReply, fetchPostById, fetchReplies, toggleReaction } from "@/lib/social-api";
 import { useProfile } from "@/hooks/use-session";
 import { toast } from "sonner";
 
@@ -73,9 +81,15 @@ function PostDetail() {
   const [replies, setReplies] = useState<Reply[]>(initial);
   const [draft, setDraft] = useState("");
   const [sparked, setSparked] = useState(false);
+  const [echoed, setEchoed] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const replyRef = useRef<HTMLTextAreaElement | null>(null);
   const { profile } = useProfile();
   const remaining = 280 - draft.length;
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{12}$/i.test(
+    post.id,
+  );
 
   const author = profile
     ? { name: profile.display_name, handle: profile.handle, initials: profile.initials }
@@ -92,6 +106,24 @@ function PostDetail() {
   async function submit() {
     const body = draft.trim();
     if (!body) return;
+
+    if (!isUuid) {
+      setReplies((items) => [
+        ...items,
+        {
+          id: `local-reply-${Date.now()}`,
+          postId: post.id,
+          author,
+          time: "now",
+          body,
+          sparks: 0,
+        },
+      ]);
+      setDraft("");
+      toast.success("Reply posted");
+      return;
+    }
+
     setSubmitting(true);
     try {
       await createReply(post.id, body);
@@ -106,19 +138,63 @@ function PostDetail() {
     }
   }
 
+  async function toggle(
+    kind: "spark" | "echo" | "bookmark",
+    active: boolean,
+    local: (value: boolean) => void,
+  ) {
+    if (!isUuid) {
+      local(!active);
+      return;
+    }
+    try {
+      local(await toggleReaction(post.id, kind, active));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "That action could not be saved");
+    }
+  }
+
+  async function share() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      toast.success("Thread link copied");
+    } catch {
+      toast.error("Could not copy link");
+    }
+  }
+
   return (
     <AppShell>
       <DetailBar />
 
       <article className="border-b border-border px-4 py-5 sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
-          <Avatar initials={post.author.initials} />
+          <Link
+            to="/user/$handle"
+            params={{ handle: post.author.handle }}
+            aria-label={`Open ${post.author.name}'s profile`}
+            className="rounded-2xl focus:outline-none focus:ring-2 focus:ring-signal focus:ring-offset-2 focus:ring-offset-background"
+          >
+            <Avatar initials={post.author.initials} />
+          </Link>
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-1.5">
-              <span className="truncate font-display text-sm font-bold">{post.author.name}</span>
+              <Link
+                to="/user/$handle"
+                params={{ handle: post.author.handle }}
+                className="truncate font-display text-sm font-bold hover:underline"
+              >
+                {post.author.name}
+              </Link>
               {post.author.verified && <BadgeCheck className="size-4 shrink-0 text-signal" />}
             </div>
-            <p className="truncate text-sm text-muted-foreground">@{post.author.handle}</p>
+            <Link
+              to="/user/$handle"
+              params={{ handle: post.author.handle }}
+              className="truncate text-sm text-muted-foreground hover:text-foreground hover:underline"
+            >
+              @{post.author.handle}
+            </Link>
           </div>
         </div>
 
@@ -143,32 +219,47 @@ function PostDetail() {
 
         <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 border-y border-border py-3 text-sm">
           <Stat value={replies.length} label="Replies" />
-          <Stat value={post.echoes} label="Echoes" />
+          <Stat value={post.echoes + (echoed ? 1 : 0)} label="Echoes" />
           <Stat value={post.sparks + (sparked ? 1 : 0)} label="Sparks" />
         </div>
 
         <div className="mt-3 flex items-center justify-between gap-2 text-muted-foreground sm:max-w-md">
-          <IconBtn icon={MessageCircle} label="Reply" />
-          <IconBtn icon={Repeat2} label="Echo" />
+          <IconBtn icon={MessageCircle} label="Reply" onClick={() => replyRef.current?.focus()} />
+          <IconBtn
+            icon={Repeat2}
+            label="Echo"
+            active={echoed}
+            activeClass="text-echo"
+            onClick={() => void toggle("echo", echoed, setEchoed)}
+          />
           <IconBtn
             icon={Flame}
             label="Spark"
             active={sparked}
-            onClick={() => setSparked((v) => !v)}
+            activeClass="text-spark"
+            onClick={() => void toggle("spark", sparked, setSparked)}
           />
-          <IconBtn icon={Share2} label="Share" />
+          <IconBtn
+            icon={Bookmark}
+            label="Save"
+            active={saved}
+            activeClass="text-signal"
+            onClick={() => void toggle("bookmark", saved, setSaved)}
+          />
+          <IconBtn icon={Share2} label="Share" onClick={() => void share()} />
         </div>
       </article>
 
       <div className="border-b border-border px-4 py-4 sm:px-6">
         <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3">
-          <Avatar initials={currentUser.initials} />
+          <Avatar initials={author.initials} />
           <div className="min-w-0">
             <label htmlFor="reply" className="sr-only">
               Post your reply
             </label>
             <textarea
               id="reply"
+              ref={replyRef}
               rows={2}
               value={draft}
               maxLength={280}
@@ -233,11 +324,13 @@ function IconBtn({
   icon: Icon,
   label,
   active,
+  activeClass,
   onClick,
 }: {
-  icon: React.ElementType;
+  icon: ElementType;
   label: string;
   active?: boolean;
+  activeClass?: string;
   onClick?: () => void;
 }) {
   return (
@@ -246,7 +339,7 @@ function IconBtn({
       onClick={onClick}
       aria-label={label}
       className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs transition-colors hover:bg-surface hover:text-foreground sm:text-sm ${
-        active ? "text-spark" : ""
+        active ? (activeClass ?? "text-spark") : ""
       }`}
     >
       <Icon className={`size-[18px] ${active ? "fill-current" : ""}`} />

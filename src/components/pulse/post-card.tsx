@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ElementType } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   MessageCircle,
@@ -70,16 +70,41 @@ export function PostCard({ post, onDelete }: { post: Post; onDelete?: (id: strin
   return (
     <article className="border-b border-border px-4 py-4 transition-colors hover:bg-surface/60 sm:px-6">
       <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 sm:gap-4">
-        <Avatar initials={post.author.initials} />
+        <Link
+          to="/user/$handle"
+          params={{ handle: post.author.handle }}
+          aria-label={`Open ${post.author.name}'s profile`}
+          className="self-start rounded-2xl focus:outline-none focus:ring-2 focus:ring-signal focus:ring-offset-2 focus:ring-offset-background"
+        >
+          <Avatar initials={post.author.initials} />
+        </Link>
         <div className="min-w-0">
           <header className="flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
             <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-              <span className="truncate font-display text-sm font-bold">{post.author.name}</span>
+              <Link
+                to="/user/$handle"
+                params={{ handle: post.author.handle }}
+                className="truncate font-display text-sm font-bold hover:underline"
+              >
+                {post.author.name}
+              </Link>
               {post.author.verified && (
                 <BadgeCheck className="size-4 shrink-0 text-signal" aria-label="Verified" />
               )}
-              <span className="truncate text-sm text-muted-foreground">@{post.author.handle}</span>
-              <span className="text-sm text-muted-foreground">· {post.time}</span>
+              <Link
+                to="/user/$handle"
+                params={{ handle: post.author.handle }}
+                className="truncate text-sm text-muted-foreground hover:text-foreground hover:underline"
+              >
+                @{post.author.handle}
+              </Link>
+              <Link
+                to="/post/$postId"
+                params={{ postId: post.id }}
+                className="text-sm text-muted-foreground hover:text-foreground hover:underline"
+              >
+                · {post.time}
+              </Link>
             </div>
             {isOwner && (
               <button
@@ -152,8 +177,9 @@ export function PostCard({ post, onDelete }: { post: Post; onDelete?: (id: strin
             <Action
               icon={MessageCircle}
               label={compact(post.replies)}
-              ariaLabel="Reply"
+              ariaLabel="Show replies"
               hover="hover:text-signal"
+              toPostId={post.id}
             />
             <Action
               icon={Repeat2}
@@ -176,8 +202,9 @@ export function PostCard({ post, onDelete }: { post: Post; onDelete?: (id: strin
             <Action
               icon={BarChart3}
               label={post.views}
-              ariaLabel="View count"
+              ariaLabel="View pulse metrics"
               hover="hover:text-signal"
+              toPostId={post.id}
             />
             <Action
               icon={Bookmark}
@@ -324,26 +351,24 @@ function Action({
   active,
   activeClass,
   onClick,
+  toPostId,
 }: {
-  icon: React.ElementType;
+  icon: ElementType;
   label?: string;
   ariaLabel: string;
   hover: string;
   active?: boolean;
   activeClass?: string;
   onClick?: () => void;
+  toPostId?: string;
 }) {
-  return (
-    <button
-      type="button"
-      aria-label={ariaLabel}
-      onClick={onClick}
-      className={cn(
-        "group -ml-1 inline-flex items-center gap-1.5 rounded-full px-2 py-1.5 text-xs transition-colors sm:text-sm",
-        hover,
-        active && activeClass,
-      )}
-    >
+  const className = cn(
+    "group -ml-1 inline-flex items-center gap-1.5 rounded-full px-2 py-1.5 text-xs transition-colors sm:text-sm",
+    hover,
+    active && activeClass,
+  );
+  const contents = (
+    <>
       <Icon
         className={cn(
           "size-[18px] transition-transform group-hover:scale-110",
@@ -351,6 +376,25 @@ function Action({
         )}
       />
       {label && <span className="tabular-nums">{label}</span>}
+    </>
+  );
+
+  if (toPostId) {
+    return (
+      <Link
+        to="/post/$postId"
+        params={{ postId: toPostId }}
+        aria-label={ariaLabel}
+        className={className}
+      >
+        {contents}
+      </Link>
+    );
+  }
+
+  return (
+    <button type="button" aria-label={ariaLabel} onClick={onClick} className={className}>
+      {contents}
     </button>
   );
 }

@@ -14,6 +14,14 @@ type PersistedPost = {
   } | null;
 };
 
+type PersistedProfile = {
+  id: string;
+  display_name: string;
+  handle: string;
+  initials: string;
+  bio: string | null;
+};
+
 const POST_BODY_LIMIT = 280;
 const REPLY_BODY_LIMIT = 280;
 const MAX_MEDIA_ATTACHMENTS = 20;
@@ -304,6 +312,23 @@ export async function fetchUserPosts(userId: string): Promise<Post[]> {
 
   const rows = (data ?? []) as unknown as PersistedPost[];
   return rows.map((post) => toPost(post));
+}
+
+export async function fetchProfileByHandle(handle: string): Promise<PersistedProfile | null> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, display_name, handle, initials, bio")
+    .ilike("handle", handle)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data as PersistedProfile | null;
+}
+
+export async function fetchPostsByHandle(handle: string): Promise<Post[]> {
+  const profile = await fetchProfileByHandle(handle);
+  if (!profile) return [];
+  return fetchUserPosts(profile.id);
 }
 
 export async function fetchReplies(postId: string) {

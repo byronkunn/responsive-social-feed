@@ -27,13 +27,18 @@ export const currentUser: Author = {
   initials: "PM",
 };
 
-const demoAuthors = {
+export const demoAuthors = {
   ada: { name: "Ada Rowe", handle: "adarowe", initials: "AR", verified: true },
   miles: { name: "Miles Chen", handle: "mileschen", initials: "MC" },
   sora: { name: "Sora Kim", handle: "sorakim", initials: "SK", verified: true },
   nina: { name: "Nina Patel", handle: "ninap", initials: "NP" },
   theo: { name: "Theo Grant", handle: "theog", initials: "TG" },
 } satisfies Record<string, Author>;
+
+export function authorByHandle(handle: string) {
+  const normalized = handle.toLowerCase();
+  return Object.values(demoAuthors).find((author) => author.handle.toLowerCase() === normalized);
+}
 
 export const posts: Post[] = [
   {
@@ -299,7 +304,64 @@ export type Reply = {
   sparks: number;
 };
 
-export const replies: Reply[] = [];
+export const replies: Reply[] = [
+  {
+    id: "reply-demo-020-1",
+    postId: "demo-020",
+    author: demoAuthors.miles,
+    time: "2m",
+    body: "The album grid feels stable now. I would still verify the +more state on a narrow phone before release.",
+    sparks: 12,
+  },
+  {
+    id: "reply-demo-020-2",
+    postId: "demo-020",
+    author: demoAuthors.sora,
+    time: "1m",
+    body: "Video and image posts both keep their controls reachable on my pass.",
+    sparks: 9,
+  },
+  {
+    id: "reply-demo-019-1",
+    postId: "demo-019",
+    author: demoAuthors.nina,
+    time: "6m",
+    body: "Controls are visible, and the card does not jump when metadata loads.",
+    sparks: 5,
+  },
+  {
+    id: "reply-demo-018-1",
+    postId: "demo-018",
+    author: demoAuthors.theo,
+    time: "12m",
+    body: "Single image opens cleanly. Pagination only appears when there is more than one asset, which is right.",
+    sparks: 7,
+  },
+  {
+    id: "reply-demo-017-1",
+    postId: "demo-017",
+    author: demoAuthors.ada,
+    time: "18m",
+    body: "Pixiv-style creator pages need strong media tabs, but the first pass can stay post-focused.",
+    sparks: 16,
+  },
+  {
+    id: "reply-demo-016-1",
+    postId: "demo-016",
+    author: demoAuthors.sora,
+    time: "24m",
+    body: "The fourth image overlay is readable on desktop and mobile.",
+    sparks: 4,
+  },
+  {
+    id: "reply-demo-011-1",
+    postId: "demo-011",
+    author: demoAuthors.nina,
+    time: "1h",
+    body: "Every optimistic action should have a clear signed-out error and a persisted signed-in path.",
+    sparks: 21,
+  },
+];
 
 export function repliesFor(postId: string) {
   return replies.filter((r) => r.postId === postId);
@@ -324,6 +386,11 @@ export function searchPosts(q: string) {
 export function postsByTag(tag: string) {
   const t = tag.toLowerCase();
   return posts.filter((p) => (p.tag ?? "").toLowerCase() === t);
+}
+
+export function postsByAuthorHandle(handle: string) {
+  const normalized = handle.toLowerCase();
+  return posts.filter((p) => p.author.handle.toLowerCase() === normalized);
 }
 
 export type PulseList = {
