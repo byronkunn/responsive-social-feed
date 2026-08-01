@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { BadgeCheck, PenSquare, Search } from "lucide-react";
 import { Avatar } from "@/components/pulse/avatar";
-import { conversations, type Conversation } from "@/lib/pulse-data";
+import { type Conversation } from "@/lib/pulse-data";
 import { fetchConversations } from "@/lib/social-api";
 import { cn } from "@/lib/utils";
 
@@ -25,7 +25,7 @@ export function ConversationList({
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<Filter>("All");
   const [loaded, setLoaded] = useState<Conversation[] | null>(items ?? null);
-  const source = useMemo(() => loaded ?? (import.meta.env.DEV ? conversations : []), [loaded]);
+  const source = useMemo(() => loaded ?? [], [loaded]);
 
   useEffect(() => {
     if (items) {
@@ -37,11 +37,11 @@ export function ConversationList({
     fetchConversations()
       .then((fetched) => {
         if (!active) return;
-        setLoaded(fetched.length > 0 ? fetched : import.meta.env.DEV ? conversations : []);
+        setLoaded(fetched);
       })
       .catch(() => {
         if (!active) return;
-        setLoaded(import.meta.env.DEV ? conversations : []);
+        setLoaded([]);
       });
 
     return () => {

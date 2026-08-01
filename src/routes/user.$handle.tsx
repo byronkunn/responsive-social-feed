@@ -5,7 +5,7 @@ import { AppShell } from "@/components/pulse/app-shell";
 import { Avatar } from "@/components/pulse/avatar";
 import { PostCard } from "@/components/pulse/post-card";
 import { Button } from "@/components/ui/button";
-import { authorByHandle, postsByAuthorHandle, type Author, type Post } from "@/lib/pulse-data";
+import { type Author, type Post } from "@/lib/pulse-data";
 import { fetchPostsByHandle, fetchProfileByHandle, toggleFollowProfile } from "@/lib/social-api";
 import { toast } from "sonner";
 
@@ -16,7 +16,6 @@ type PublicProfile = Author & {
 export const Route = createFileRoute("/user/$handle")({
   loader: async ({ params }) => {
     const handle = params.handle.toLowerCase();
-    const demoAuthor = authorByHandle(handle);
 
     try {
       const profile = await fetchProfileByHandle(handle);
@@ -33,17 +32,10 @@ export const Route = createFileRoute("/user/$handle")({
         };
       }
     } catch {
-      // Demo profile fallback keeps public author pages usable without Supabase.
+      throw notFound();
     }
 
-    if (!demoAuthor) throw notFound();
-    return {
-      profile: {
-        ...demoAuthor,
-        bio: "A Pulse demo profile with posts, media, replies, and visible post metrics.",
-      },
-      posts: postsByAuthorHandle(handle),
-    };
+    throw notFound();
   },
   head: ({ loaderData }) => {
     const profile = loaderData?.profile;

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell, TopBar } from "@/components/pulse/app-shell";
 import { ConversationList, NewMessageButton } from "@/components/pulse/conversation-list";
-import { conversations as seedConversations, type Conversation } from "@/lib/pulse-data";
+import { type Conversation } from "@/lib/pulse-data";
 import { requireClientSession } from "@/lib/require-auth";
 import { fetchConversations } from "@/lib/social-api";
 
@@ -28,9 +28,8 @@ export const Route = createFileRoute("/messages/")({
 });
 
 function Messages() {
-  const [conversations, setConversations] = useState<Conversation[]>(
-    import.meta.env.DEV ? seedConversations : [],
-  );
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [loadError, setLoadError] = useState(false);
   const unread = conversations.reduce((n, c) => n + (c.unread ?? 0), 0);
 
   useEffect(() => {
@@ -38,13 +37,13 @@ function Messages() {
     fetchConversations()
       .then((fetched) => {
         if (!active) return;
-        setConversations(
-          fetched.length > 0 ? fetched : import.meta.env.DEV ? seedConversations : [],
-        );
+        setConversations(fetched);
+        setLoadError(false);
       })
       .catch(() => {
         if (!active) return;
-        setConversations(import.meta.env.DEV ? seedConversations : []);
+        setConversations([]);
+        setLoadError(true);
       });
     return () => {
       active = false;
@@ -62,6 +61,11 @@ function Messages() {
         }
       />
       <ConversationList items={conversations} />
+      {loadError ? (
+        <p className="border-b border-border bg-surface/50 px-6 py-3 text-sm text-muted-foreground">
+          Live conversations are unavailable. Apply the Supabase migrations to load messages.
+        </p>
+      ) : null}
       <div className="hidden px-6 py-12 text-center lg:block">
         <p className="text-sm text-muted-foreground">
           Pick a conversation to open it beside your inbox.

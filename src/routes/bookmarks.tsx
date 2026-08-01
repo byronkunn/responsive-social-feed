@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell, TopBar } from "@/components/pulse/app-shell";
 import { PostCard } from "@/components/pulse/post-card";
-import { posts, type Post } from "@/lib/pulse-data";
+import { type Post } from "@/lib/pulse-data";
 import { requireClientSession } from "@/lib/require-auth";
 import { fetchBookmarkedPosts } from "@/lib/social-api";
 

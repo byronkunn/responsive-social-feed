@@ -5,7 +5,7 @@ import { AppShell, TopBar } from "@/components/pulse/app-shell";
 import { PostCard } from "@/components/pulse/post-card";
 import { Avatar } from "@/components/pulse/avatar";
 import { Button } from "@/components/ui/button";
-import { type Connection, type Post, trends as seedTrends } from "@/lib/pulse-data";
+import { type Connection, type Post } from "@/lib/pulse-data";
 import { fetchPosts, fetchSuggestedProfiles, toggleFollowProfile } from "@/lib/social-api";
 import { toast } from "sonner";
 
@@ -35,7 +35,6 @@ export const Route = createFileRoute("/search")({
 });
 
 const tabs = ["Top", "Latest", "People"] as const;
-const defaultSearchTerms = ["building", "notes", "design", "typography", "weather", "localfirst"];
 
 function SearchPage() {
   const { q } = Route.useSearch();
@@ -76,8 +75,16 @@ function SearchPage() {
       )
     : [];
 
-  const searchSuggestions =
-    seedTrends.length > 0 ? seedTrends.map((t) => t.title) : defaultSearchTerms.map((t) => `#${t}`);
+  const searchSuggestions = Array.from(
+    new Set(
+      allPosts
+        .flatMap((post) => {
+          const matches = post.body.match(/#[a-z0-9_]+/gi) ?? [];
+          return [...matches, ...(post.tag ? [`#${post.tag}`] : [])];
+        })
+        .map((tag) => tag.toLowerCase()),
+    ),
+  ).slice(0, 8);
 
   return (
     <AppShell>
@@ -135,21 +142,27 @@ function SearchPage() {
       {!q ? (
         <section className="p-4 sm:p-6">
           <h2 className="font-display text-lg font-bold">Try one of these</h2>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {searchSuggestions.map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => {
-                  setValue(t);
-                  navigate({ search: { q: t } });
-                }}
-                className="rounded-full bg-surface px-4 py-2 text-sm font-medium transition-colors hover:bg-surface-2"
-              >
-                {t}
-              </button>
-            ))}
-          </div>
+          {searchSuggestions.length === 0 ? (
+            <p className="mt-2 text-sm text-muted-foreground">
+              Suggestions appear from real hashtags in public posts.
+            </p>
+          ) : (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {searchSuggestions.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => {
+                    setValue(t);
+                    navigate({ search: { q: t } });
+                  }}
+                  className="rounded-full bg-surface px-4 py-2 text-sm font-medium transition-colors hover:bg-surface-2"
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          )}
         </section>
       ) : tab === "People" ? (
         <ul className="divide-y divide-border">

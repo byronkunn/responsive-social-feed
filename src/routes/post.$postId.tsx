@@ -12,7 +12,7 @@ import {
 import { AppShell } from "@/components/pulse/app-shell";
 import { Avatar } from "@/components/pulse/avatar";
 import { Button } from "@/components/ui/button";
-import { currentUser, repliesFor, type Reply } from "@/lib/pulse-data";
+import { currentUser, type Reply } from "@/lib/pulse-data";
 import { createReply, fetchPostById, fetchReplies, toggleReaction } from "@/lib/social-api";
 import { useProfile } from "@/hooks/use-session";
 import { toast } from "sonner";
@@ -21,7 +21,8 @@ export const Route = createFileRoute("/post/$postId")({
   loader: async ({ params }) => {
     const post = await fetchPostById(params.postId);
     if (!post) throw notFound();
-    return { post, replies: repliesFor(params.postId) };
+    const replies = await fetchReplies(params.postId).catch(() => []);
+    return { post, replies };
   },
   head: ({ loaderData }) => {
     if (!loaderData) {
@@ -87,10 +88,6 @@ function PostDetail() {
   const replyRef = useRef<HTMLTextAreaElement | null>(null);
   const { profile } = useProfile();
   const remaining = 280 - draft.length;
-  const isUuid = /^[0-9a-f]{8}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{12}$/i.test(
-    post.id,
-  );
-
   const author = profile
     ? { name: profile.display_name, handle: profile.handle, initials: profile.initials }
     : currentUser;
@@ -106,23 +103,6 @@ function PostDetail() {
   async function submit() {
     const body = draft.trim();
     if (!body) return;
-
-    if (!isUuid) {
-      setReplies((items) => [
-        ...items,
-        {
-          id: `local-reply-${Date.now()}`,
-          postId: post.id,
-          author,
-          time: "now",
-          body,
-          sparks: 0,
-        },
-      ]);
-      setDraft("");
-      toast.success("Reply posted");
-      return;
-    }
 
     setSubmitting(true);
     try {
@@ -143,10 +123,6 @@ function PostDetail() {
     active: boolean,
     local: (value: boolean) => void,
   ) {
-    if (!isUuid) {
-      local(!active);
-      return;
-    }
     try {
       local(await toggleReaction(post.id, kind, active));
     } catch (error) {

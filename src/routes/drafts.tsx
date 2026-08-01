@@ -4,7 +4,7 @@ import { Trash2, PencilLine } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell, TopBar } from "@/components/pulse/app-shell";
 import { Button } from "@/components/ui/button";
-import { drafts as seedDrafts } from "@/lib/pulse-data";
+import { type Draft } from "@/lib/pulse-data";
 import { requireClientSession } from "@/lib/require-auth";
 import { deleteDraft, fetchDrafts } from "@/lib/social-api";
 
@@ -30,7 +30,7 @@ export const Route = createFileRoute("/drafts")({
 });
 
 function DraftsPage() {
-  const [items, setItems] = useState(seedDrafts);
+  const [items, setItems] = useState<Draft[]>([]);
   const navigate = useNavigate();
 
   useEffect(() => {

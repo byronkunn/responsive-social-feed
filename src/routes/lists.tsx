@@ -15,12 +15,10 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { currentUser, lists as initialLists, type PulseList } from "@/lib/pulse-data";
+import { type PulseList } from "@/lib/pulse-data";
 import { toast } from "sonner";
 
 import { createList, fetchLists } from "@/lib/social-api";
-
-const LOCAL_LISTS_KEY = "pulse.local-lists";
 
 export const Route = createFileRoute("/lists")({
   head: () => ({
@@ -43,9 +41,7 @@ export const Route = createFileRoute("/lists")({
 });
 
 function Lists() {
-  const [allLists, setAllLists] = useState<PulseList[]>(() =>
-    import.meta.env.DEV ? readLocalLists() : initialLists,
-  );
+  const [allLists, setAllLists] = useState<PulseList[]>([]);
   const [followed, setFollowed] = useState<string[]>(() => {
     try {
       return JSON.parse(localStorage.getItem("pulse.followed-lists") || "[]") as string[];
@@ -54,6 +50,7 @@ function Lists() {
     }
   });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -64,10 +61,13 @@ function Lists() {
     fetchLists()
       .then((lists) => {
         if (!active) return;
-        setAllLists(lists.length > 0 ? lists : import.meta.env.DEV ? readLocalLists() : []);
+        setAllLists(lists);
+        setLoadError(false);
       })
       .catch(() => {
-        if (active) setAllLists(import.meta.env.DEV ? readLocalLists() : []);
+        if (!active) return;
+        setAllLists([]);
+        setLoadError(true);
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -86,36 +86,20 @@ function Lists() {
     e.preventDefault();
     if (!name.trim()) return;
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-    const newList: PulseList = {
-      slug,
-      name: name.trim(),
-      description: description.trim() || "Custom curated feed",
-      curator: currentUser,
-      members: 1,
-      posts: 0,
-      pinned: isPrivate,
-    };
     try {
       await createList(name, description, isPrivate);
       const lists = await fetchLists();
-      setAllLists(lists.length > 0 ? lists : [newList, ...allLists]);
+      setAllLists(lists);
     } catch (error) {
-      if (!import.meta.env.DEV) {
-        toast.error(error instanceof Error ? error.message : "List could not be created");
-        return;
-      }
-      setAllLists((prev) => {
-        const next = [newList, ...prev];
-        writeLocalLists(next);
-        return next;
-      });
+      toast.error(error instanceof Error ? error.message : "List could not be created");
+      return;
     }
     setFollowed((prev) => [...prev, slug]);
     setName("");
     setDescription("");
     setIsPrivate(false);
     setOpen(false);
-    toast.success(`List "${newList.name}" created`);
+    toast.success(`List "${name.trim()}" created`);
   }
 
   return (
@@ -181,6 +165,12 @@ function Lists() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {loadError ? (
+        <p className="border-b border-border bg-surface/50 px-6 py-3 text-sm text-muted-foreground">
+          Live lists are unavailable. Apply the Supabase migrations to populate lists.
+        </p>
+      ) : null}
 
       <ul className="divide-y divide-border">
         {loading ? (
@@ -261,22 +251,4 @@ function Lists() {
       </p>
     </AppShell>
   );
-}
-
-function readLocalLists() {
-  try {
-    const raw = localStorage.getItem(LOCAL_LISTS_KEY);
-    const stored = raw ? (JSON.parse(raw) as PulseList[]) : [];
-    return stored.length > 0 ? stored : initialLists;
-  } catch {
-    return initialLists;
-  }
-}
-
-function writeLocalLists(lists: PulseList[]) {
-  try {
-    localStorage.setItem(LOCAL_LISTS_KEY, JSON.stringify(lists));
-  } catch {
-    // Local storage may be disabled.
-  }
 }

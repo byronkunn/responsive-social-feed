@@ -15,12 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  communities as seedCommunities,
-  posts as seedPosts,
-  type Community,
-  type Post,
-} from "@/lib/pulse-data";
+import { type Community, type Post } from "@/lib/pulse-data";
 import {
   createCommunity,
   fetchCommunities,
@@ -28,8 +23,6 @@ import {
   toggleCommunityMembership,
 } from "@/lib/social-api";
 import { toast } from "sonner";
-
-const LOCAL_COMMUNITIES_KEY = "pulse.local-communities";
 
 export const Route = createFileRoute("/communities")({
   head: () => ({
@@ -54,11 +47,10 @@ export const Route = createFileRoute("/communities")({
 });
 
 function Communities() {
-  const [communities, setCommunities] = useState<Community[]>(
-    import.meta.env.DEV ? readLocalCommunities() : [],
-  );
-  const [recentPosts, setRecentPosts] = useState<Post[]>(import.meta.env.DEV ? seedPosts : []);
+  const [communities, setCommunities] = useState<Community[]>([]);
+  const [recentPosts, setRecentPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -68,12 +60,13 @@ function Communities() {
     fetchCommunities()
       .then((items) => {
         if (!active) return;
-        setCommunities(
-          items.length > 0 ? items : import.meta.env.DEV ? readLocalCommunities() : [],
-        );
+        setCommunities(items);
+        setLoadError(false);
       })
       .catch(() => {
-        if (active) setCommunities(import.meta.env.DEV ? readLocalCommunities() : []);
+        if (!active) return;
+        setCommunities([]);
+        setLoadError(true);
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -88,10 +81,10 @@ function Communities() {
     let active = true;
     fetchPosts()
       .then((items) => {
-        if (active) setRecentPosts(items.length > 0 ? items : import.meta.env.DEV ? seedPosts : []);
+        if (active) setRecentPosts(items);
       })
       .catch(() => {
-        if (active) setRecentPosts(import.meta.env.DEV ? seedPosts : []);
+        if (active) setRecentPosts([]);
       });
 
     return () => {
@@ -109,27 +102,8 @@ function Communities() {
       setCommunities(items);
       toast.success(`Community "${name.trim()}" created`);
     } catch (error) {
-      if (!import.meta.env.DEV) {
-        toast.error(error instanceof Error ? error.message : "Community could not be created");
-        return;
-      }
-      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-      setCommunities((current) => {
-        const next = [
-          {
-            slug,
-            name: name.trim(),
-            blurb: description.trim() || "A shared room for related posts and people.",
-            members: "1",
-            activity: "now",
-            joined: true,
-          },
-          ...current,
-        ];
-        writeLocalCommunities(next);
-        return next;
-      });
-      toast.success("Community created locally");
+      toast.error(error instanceof Error ? error.message : "Community could not be created");
+      return;
     }
 
     setName("");
@@ -140,23 +114,15 @@ function Communities() {
   async function toggleJoin(community: Community) {
     const previous = Boolean(community.joined);
     setCommunities((current) => {
-      const next = current.map((item) =>
+      return current.map((item) =>
         item.slug === community.slug ? { ...item, joined: !previous } : item,
       );
-      if (import.meta.env.DEV) writeLocalCommunities(next);
-      return next;
     });
 
     try {
       await toggleCommunityMembership(community.slug, previous);
       toast.success(previous ? `Left ${community.name}` : `Joined ${community.name}`);
     } catch (error) {
-      if (import.meta.env.DEV) {
-        toast.success(
-          previous ? `Left ${community.name} locally` : `Joined ${community.name} locally`,
-        );
-        return;
-      }
       setCommunities((current) =>
         current.map((item) =>
           item.slug === community.slug ? { ...item, joined: previous } : item,
@@ -217,6 +183,12 @@ function Communities() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {loadError ? (
+        <p className="border-b border-border bg-surface/50 px-6 py-3 text-sm text-muted-foreground">
+          Live communities are unavailable. Apply the Supabase migrations to populate communities.
+        </p>
+      ) : null}
 
       <section className="grid gap-3 border-b border-border p-4 sm:grid-cols-2 sm:p-6">
         {loading ? (
@@ -279,22 +251,4 @@ function Communities() {
       </p>
     </AppShell>
   );
-}
-
-function readLocalCommunities() {
-  try {
-    const raw = localStorage.getItem(LOCAL_COMMUNITIES_KEY);
-    const stored = raw ? (JSON.parse(raw) as Community[]) : [];
-    return stored.length > 0 ? stored : seedCommunities;
-  } catch {
-    return seedCommunities;
-  }
-}
-
-function writeLocalCommunities(communities: Community[]) {
-  try {
-    localStorage.setItem(LOCAL_COMMUNITIES_KEY, JSON.stringify(communities));
-  } catch {
-    // Local storage may be disabled.
-  }
 }

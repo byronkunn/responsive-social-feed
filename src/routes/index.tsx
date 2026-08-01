@@ -4,7 +4,7 @@ import { AppShell, TopBar } from "@/components/pulse/app-shell";
 import { Composer } from "@/components/pulse/composer";
 import { PostCard } from "@/components/pulse/post-card";
 import { useProfile } from "@/hooks/use-session";
-import { posts as seedPosts, currentUser, type Post } from "@/lib/pulse-data";
+import { type Post } from "@/lib/pulse-data";
 import { createPost, fetchPosts } from "@/lib/social-api";
 import { toast } from "sonner";
 
@@ -29,15 +29,20 @@ export const Route = createFileRoute("/")({
 
 function Home() {
   const [tab, setTab] = useState<"forYou" | "following">("forYou");
-  const [posts, setPosts] = useState<Post[]>(seedPosts);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loadError, setLoadError] = useState(false);
   const { profile } = useProfile();
 
   useEffect(() => {
     fetchPosts()
       .then((persisted) => {
-        setPosts(persisted.length > 0 ? [...persisted, ...seedPosts] : seedPosts);
+        setPosts(persisted);
+        setLoadError(false);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        setPosts([]);
+        setLoadError(true);
+      });
   }, []);
 
   const visible = tab === "forYou" ? posts : posts.filter((_, i) => i % 2 === 0);
@@ -72,7 +77,8 @@ function Home() {
           try {
             await createPost(body, "Everyone", imageUrls);
             const persisted = await fetchPosts();
-            setPosts(persisted.length > 0 ? [...persisted, ...seedPosts] : seedPosts);
+            setPosts(persisted);
+            setLoadError(false);
           } catch (error) {
             if (import.meta.env.DEV && profile?.id.startsWith("local-")) {
               const author = {
@@ -101,6 +107,12 @@ function Home() {
           }
         }}
       />
+
+      {loadError ? (
+        <p className="border-b border-border bg-surface/50 px-6 py-3 text-sm text-muted-foreground">
+          Live posts are unavailable. Apply the Supabase migrations to populate the feed.
+        </p>
+      ) : null}
 
       {visible.length === 0 ? (
         <p className="px-6 py-16 text-center text-sm text-muted-foreground">

@@ -1,7 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
 import {
-  conversations as seedConversations,
-  postById,
   type Author,
   type ChatAttachment,
   type ChatMessage,
@@ -432,7 +430,7 @@ export async function deleteDraft(id: string) {
 export async function fetchPostById(id: string): Promise<Post | null> {
   const isUuid = /^[0-9a-f]{8}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{12}$/i.test(id);
   if (!isUuid) {
-    return postById(id) ?? null;
+    return null;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -444,9 +442,7 @@ export async function fetchPostById(id: string): Promise<Post | null> {
     .eq("id", id)
     .maybeSingle();
 
-  if (error || !data) {
-    return postById(id) ?? null;
-  }
+  if (error || !data) return null;
 
   const post = data as unknown as PersistedPost;
   const { data: reactions } = await supabase
@@ -1091,81 +1087,4 @@ export async function toggleCommunityMembership(slug: string, active: boolean) {
   });
   if (error) throw error;
   return true;
-}
-
-export async function seed10UsersAndAlbumPosts() {
-  const dummyUsers = [
-    { name: "Maya Lin", handle: "mayalin", initials: "ML" },
-    { name: "Alex Rivera", handle: "arivera", initials: "AR" },
-    { name: "Sarah Chen", handle: "schen", initials: "SC" },
-    { name: "Kai Vance", handle: "kvance", initials: "KV" },
-    { name: "Leo Miller", handle: "lmiller", initials: "LM" },
-    { name: "Chloe Bennett", handle: "cbennett", initials: "CB" },
-    { name: "Samira Khan", handle: "skhan", initials: "SK" },
-    { name: "Liam O'Connor", handle: "loconnor", initials: "LO" },
-    { name: "Nina Patel", handle: "npatel", initials: "NP" },
-    { name: "Ethan Brooks", handle: "ebrooks", initials: "EB" },
-  ];
-
-  const albumImages = [
-    "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=800&auto=format&fit=crop&q=80",
-    "https://images.unsplash.com/photo-1573865526739-10659fec78a5?w=800&auto=format&fit=crop&q=80",
-    "https://images.unsplash.com/photo-1533738363-b7f9aef128ce?w=800&auto=format&fit=crop&q=80",
-    "https://images.unsplash.com/photo-1543852786-1cf6624b9987?w=800&auto=format&fit=crop&q=80",
-    "https://images.unsplash.com/photo-1495360010541-f48722b34f7d?w=800&auto=format&fit=crop&q=80",
-    "https://images.unsplash.com/photo-1561948955-570b270e7c36?w=800&auto=format&fit=crop&q=80",
-    "https://images.unsplash.com/photo-1518791841217-8f162f1e1131?w=800&auto=format&fit=crop&q=80",
-    "https://images.unsplash.com/photo-1533743983669-94fa5c4338ec?w=800&auto=format&fit=crop&q=80",
-    "https://images.unsplash.com/photo-1574158622682-e40e69881006?w=800&auto=format&fit=crop&q=80",
-    "https://images.unsplash.com/photo-1592194996308-7b43878e84a6?w=800&auto=format&fit=crop&q=80",
-  ];
-
-  const tagsList = [
-    "#cuties",
-    "#photography",
-    "#cats",
-    "#vibes",
-    "#nature",
-    "#design",
-    "#art",
-    "#pets",
-  ];
-
-  let currentUserIdVal: string | null = null;
-  try {
-    currentUserIdVal = await currentUserId();
-  } catch {
-    currentUserIdVal = null;
-  }
-
-  // Insert dummy profile rows if possible
-  for (const user of dummyUsers) {
-    const fakeId = `dummy-${user.handle}`;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase as any).from("profiles").upsert({
-      id: currentUserIdVal ?? fakeId,
-      display_name: user.name,
-      handle: user.handle,
-      initials: user.initials,
-    });
-  }
-
-  // Insert 10 album posts with multiple attached images and random tags
-  for (let i = 0; i < dummyUsers.length; i++) {
-    const user = dummyUsers[i]!;
-    const randomTag = tagsList[i % tagsList.length];
-    const imageSlice = albumImages.slice(
-      (i * 2) % albumImages.length,
-      ((i * 2) % albumImages.length) + 3,
-    );
-    if (imageSlice.length === 0 && albumImages[0]) {
-      imageSlice.push(albumImages[0]);
-    }
-
-    const body = `Album by @${user.handle} - ${user.name}'s collection! ${randomTag}`;
-
-    if (currentUserIdVal) {
-      await createPost(body, "Everyone", imageSlice);
-    }
-  }
 }

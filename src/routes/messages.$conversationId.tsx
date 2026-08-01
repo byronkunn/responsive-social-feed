@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import {
   ArrowLeft,
   BadgeCheck,
@@ -22,9 +22,6 @@ import { Avatar } from "@/components/pulse/avatar";
 import { ConversationList, isOnline } from "@/components/pulse/conversation-list";
 import { Button } from "@/components/ui/button";
 import {
-  conversationById,
-  conversations,
-  messageContacts,
   type Author,
   type ChatAttachment,
   type ChatMessage,
@@ -51,26 +48,30 @@ type LightboxMedia = ChatAttachment & { messageId?: string };
 export const Route = createFileRoute("/messages/$conversationId")({
   beforeLoad: requireClientSession,
   loader: async ({ params }) => {
+    if (params.conversationId === "new") {
+      return {
+        conversation: {
+          id: "new",
+          person: {
+            name: "New Message",
+            handle: "new",
+            initials: "DM",
+          },
+          preview: "Start a private conversation...",
+          time: "now",
+          messages: [],
+        },
+      };
+    }
+
     const isUuid = /^[0-9a-f]{8}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{12}$/i.test(
       params.conversationId,
     );
-    const fetched = isUuid
-      ? await fetchConversation(params.conversationId).catch(() => null)
-      : null;
-    const existing =
-      fetched ?? (import.meta.env.DEV ? conversationById(params.conversationId) : null);
-    const conversation = existing ?? {
-      id: params.conversationId,
-      person: {
-        name: params.conversationId === "new" ? "New Message" : params.conversationId,
-        handle: params.conversationId === "new" ? "new" : params.conversationId,
-        initials:
-          params.conversationId === "new" ? "DM" : params.conversationId.slice(0, 2).toUpperCase(),
-      },
-      preview: "Start a private conversation...",
-      time: "now",
-      messages: [],
-    };
+    if (!isUuid) throw notFound();
+
+    const conversation = await fetchConversation(params.conversationId).catch(() => null);
+    if (!conversation) throw notFound();
+
     return { conversation };
   },
   head: ({ loaderData }) => {
@@ -330,7 +331,7 @@ function Thread({ initialConversation }: { initialConversation: Conversation }) 
               : "Conversation deleted"}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            This local demo removed the chat from your current view.
+            This conversation was removed from your current view.
           </p>
           <Link to="/messages" className="mt-4 inline-block text-sm font-semibold text-signal">
             Back to messages
@@ -587,17 +588,17 @@ function Thread({ initialConversation }: { initialConversation: Conversation }) 
 
 function UserLookup({ onSelect }: { onSelect: (person: Author) => void }) {
   const [query, setQuery] = useState("");
-  const [profiles, setProfiles] = useState<Author[]>(import.meta.env.DEV ? messageContacts : []);
+  const [profiles, setProfiles] = useState<Author[]>([]);
   useEffect(() => {
     let active = true;
     searchProfiles(query)
       .then((items) => {
         if (!active) return;
-        setProfiles(items.length > 0 ? items : import.meta.env.DEV ? messageContacts : []);
+        setProfiles(items);
       })
       .catch(() => {
         if (!active) return;
-        setProfiles(import.meta.env.DEV ? messageContacts : []);
+        setProfiles([]);
       });
     return () => {
       active = false;
