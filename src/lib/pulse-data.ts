@@ -363,7 +363,22 @@ export const followers: Connection[] = [];
 
 export const following: Connection[] = [];
 
-export type ChatMessage = { id: string; from: "me" | "them"; body: string; time: string };
+export type ChatAttachment = {
+  id: string;
+  type: "image" | "video" | "url";
+  url: string;
+  label?: string;
+};
+
+export type ChatMessage = {
+  id: string;
+  from: "me" | "them";
+  body: string;
+  time: string;
+  attachments?: ChatAttachment[];
+  deletedForMe?: boolean;
+  deletedForBoth?: boolean;
+};
 
 export type Conversation = {
   id: string;
@@ -374,7 +389,162 @@ export type Conversation = {
   messages: ChatMessage[];
 };
 
-export const conversations: Conversation[] = [];
+export const messageContacts: Author[] = [
+  { name: "Ada Rowe", handle: "adarowe", initials: "AR", verified: true },
+  { name: "Miles Chen", handle: "mileschen", initials: "MC" },
+  { name: "Sora Kim", handle: "sorakim", initials: "SK", verified: true },
+  { name: "Nina Patel", handle: "ninap", initials: "NP" },
+  { name: "Theo Grant", handle: "theog", initials: "TG" },
+  { name: "Jules Park", handle: "julespark", initials: "JP" },
+  { name: "Mina Ortiz", handle: "minaortiz", initials: "MO" },
+  { name: "Remy Stone", handle: "remystone", initials: "RS" },
+];
+
+export const conversations: Conversation[] = [
+  {
+    id: "ada-rowe",
+    person: messageContacts[0]!,
+    preview: "Album looks good. Can you send the video too?",
+    time: "4m",
+    unread: 2,
+    messages: [
+      {
+        id: "ada-1",
+        from: "them",
+        body: "Can you review this album layout before we ship?",
+        time: "9:12 AM",
+        attachments: [
+          { id: "ada-img-1", type: "image", url: "/demo-media/photo-10.jpg", label: "Hero crop" },
+          { id: "ada-img-2", type: "image", url: "/demo-media/photo-23.jpg", label: "Mobile crop" },
+          {
+            id: "ada-img-3",
+            type: "image",
+            url: "/demo-media/photo-29.jpg",
+            label: "Gallery crop",
+          },
+        ],
+      },
+      {
+        id: "ada-2",
+        from: "me",
+        body: "The album grid holds up. I would keep the first image wide and cap the preview at four tiles.",
+        time: "9:16 AM",
+      },
+      {
+        id: "ada-3",
+        from: "them",
+        body: "Album looks good. Can you send the video too?",
+        time: "9:21 AM",
+      },
+    ],
+  },
+  {
+    id: "miles-chen",
+    person: messageContacts[1]!,
+    preview: "Sent a video sample for playback testing.",
+    time: "18m",
+    messages: [
+      {
+        id: "miles-1",
+        from: "me",
+        body: "Here is the clip I used to verify native controls.",
+        time: "8:44 AM",
+        attachments: [
+          {
+            id: "miles-video-1",
+            type: "video",
+            url: "/demo-media/flower.mp4",
+            label: "MP4 sample",
+          },
+        ],
+      },
+      {
+        id: "miles-2",
+        from: "them",
+        body: "Playback, pause, and fullscreen are working here.",
+        time: "8:50 AM",
+      },
+    ],
+  },
+  {
+    id: "sora-kim",
+    person: messageContacts[2]!,
+    preview: "Pixiv and portfolio URLs are in the thread.",
+    time: "42m",
+    unread: 1,
+    messages: [
+      {
+        id: "sora-1",
+        from: "them",
+        body: "References for creator profile patterns.",
+        time: "8:05 AM",
+        attachments: [
+          { id: "sora-url-1", type: "url", url: "https://www.pixiv.net/", label: "Pixiv" },
+          { id: "sora-url-2", type: "url", url: "https://www.behance.net/", label: "Behance" },
+        ],
+      },
+      {
+        id: "sora-2",
+        from: "me",
+        body: "Good references. We should not copy the content model, but the media tabs are useful.",
+        time: "8:08 AM",
+      },
+    ],
+  },
+  {
+    id: "nina-patel",
+    person: messageContacts[3]!,
+    preview: "Two image options attached.",
+    time: "1h",
+    messages: [
+      {
+        id: "nina-1",
+        from: "them",
+        body: "Which thumbnail feels better for the message media tab?",
+        time: "7:24 AM",
+        attachments: [
+          { id: "nina-img-1", type: "image", url: "/demo-media/photo-188.jpg", label: "Option A" },
+          { id: "nina-img-2", type: "image", url: "/demo-media/photo-219.jpg", label: "Option B" },
+        ],
+      },
+      {
+        id: "nina-2",
+        from: "me",
+        body: "Option A reads faster at small sizes.",
+        time: "7:29 AM",
+      },
+    ],
+  },
+  {
+    id: "theo-grant",
+    person: messageContacts[4]!,
+    preview: "Delete controls need both scopes.",
+    time: "2h",
+    messages: [
+      {
+        id: "theo-1",
+        from: "them",
+        body: "For deletion, we need remove for me and remove for both parties.",
+        time: "6:10 AM",
+      },
+      {
+        id: "theo-2",
+        from: "me",
+        body: "Agreed. I will expose those scopes per message and for the whole chat.",
+        time: "6:13 AM",
+        attachments: [
+          {
+            id: "theo-video-1",
+            type: "video",
+            url: "/demo-media/flower.webm",
+            label: "WebM sample",
+          },
+          { id: "theo-url-1", type: "url", url: "https://developer.mozilla.org/", label: "MDN" },
+        ],
+      },
+    ],
+  },
+];
 
 export function conversationById(id: string) {
   return conversations.find((c) => c.id === id);

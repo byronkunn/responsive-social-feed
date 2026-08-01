@@ -2,10 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AppShell, TopBar } from "@/components/pulse/app-shell";
 import { ConversationList, NewMessageButton } from "@/components/pulse/conversation-list";
 import { conversations } from "@/lib/pulse-data";
-import { requireClientSession } from "@/lib/require-auth";
 
 export const Route = createFileRoute("/messages/")({
-  beforeLoad: requireClientSession,
   head: () => ({
     meta: [
       { title: "Messages — Pulse" },

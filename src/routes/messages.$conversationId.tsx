@@ -1,16 +1,39 @@
-import { useEffect, useRef, useState } from "react";
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-import { ArrowLeft, BadgeCheck, ImagePlus, Info, Send, Smile } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import {
+  ArrowLeft,
+  BadgeCheck,
+  ImagePlus,
+  Images,
+  Info,
+  Link2,
+  Search,
+  Send,
+  Smile,
+  Trash2,
+  UserPlus,
+  Video,
+  X,
+} from "lucide-react";
 import { AppShell } from "@/components/pulse/app-shell";
 import { Avatar } from "@/components/pulse/avatar";
 import { ConversationList, isOnline } from "@/components/pulse/conversation-list";
 import { Button } from "@/components/ui/button";
-import { conversationById, type ChatMessage } from "@/lib/pulse-data";
-import { requireClientSession } from "@/lib/require-auth";
+import {
+  conversationById,
+  conversations,
+  messageContacts,
+  type Author,
+  type ChatAttachment,
+  type ChatMessage,
+  type Conversation,
+} from "@/lib/pulse-data";
 import { cn } from "@/lib/utils";
 
+type MediaFilter = "all" | "images" | "videos" | "urls";
+type PendingAttachment = ChatAttachment & { objectUrl?: string };
+
 export const Route = createFileRoute("/messages/$conversationId")({
-  beforeLoad: requireClientSession,
   loader: ({ params }) => {
     const existing = conversationById(params.conversationId);
     const conversation = existing ?? {
@@ -28,12 +51,7 @@ export const Route = createFileRoute("/messages/$conversationId")({
     return { conversation };
   },
   head: ({ loaderData }) => {
-    if (!loaderData) {
-      return {
-        meta: [{ title: "Conversation not found — Pulse" }, { name: "robots", content: "noindex" }],
-      };
-    }
-    const title = `Chat with ${loaderData.conversation.person.name} — Pulse`;
+    const title = `Chat with ${loaderData?.conversation.person.name ?? "Messages"} — Pulse`;
     return {
       meta: [
         { title },
@@ -46,16 +64,6 @@ export const Route = createFileRoute("/messages/$conversationId")({
       ],
     };
   },
-  notFoundComponent: () => (
-    <AppShell rail={false}>
-      <div className="px-6 py-16 text-center">
-        <p className="font-display text-lg font-bold">Conversation not found</p>
-        <Link to="/messages" className="mt-2 inline-block text-sm text-signal hover:underline">
-          Back to messages
-        </Link>
-      </div>
-    </AppShell>
-  ),
   component: ConversationPage,
 });
 
@@ -71,36 +79,170 @@ function ConversationPage() {
           </div>
           <ConversationList activeId={conversation.id} compact />
         </aside>
-        <Thread key={conversation.id} />
+        <Thread key={conversation.id} initialConversation={conversation} />
       </div>
     </AppShell>
   );
 }
 
-function Thread() {
-  const { conversation } = Route.useLoaderData();
-  const [messages, setMessages] = useState<ChatMessage[]>(conversation.messages);
+function Thread({ initialConversation }: { initialConversation: Conversation }) {
+  const [conversation, setConversation] = useState(initialConversation);
+  const [messages, setMessages] = useState<ChatMessage[]>(initialConversation.messages);
   const [value, setValue] = useState("");
   const [typing, setTyping] = useState(false);
+  const [pending, setPending] = useState<PendingAttachment[]>([]);
+  const [mediaFilter, setMediaFilter] = useState<MediaFilter>("all");
+  const [chatDeleted, setChatDeleted] = useState<"me" | "both" | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const isNewChat = initialConversation.id === "new" && messages.length === 0;
+  const visibleMessages = messages.filter((message) => !message.deletedForMe);
+  const mediaItems = useMemo(
+    () =>
+      visibleMessages
+        .flatMap((message) =>
+          (message.attachments ?? []).map((attachment) => ({
+            ...attachment,
+            messageId: message.id,
+            mine: message.from === "me",
+          })),
+        )
+        .filter((attachment) => {
+          if (mediaFilter === "images") return attachment.type === "image";
+          if (mediaFilter === "videos") return attachment.type === "video";
+          if (mediaFilter === "urls") return attachment.type === "url";
+          return true;
+        }),
+    [visibleMessages, mediaFilter],
+  );
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
-  }, [messages, typing]);
+  }, [messages, typing, mediaFilter]);
 
   useEffect(() => {
     inputRef.current?.focus();
-  }, []);
+  }, [conversation.id]);
+
+  function startChat(person: Author) {
+    setConversation({
+      id: `local-${person.handle}`,
+      person,
+      preview: "Start a private conversation...",
+      time: "now",
+      messages: [],
+    });
+    setMessages([]);
+    setChatDeleted(null);
+    window.setTimeout(() => inputRef.current?.focus(), 50);
+  }
+
+  function handleFiles(files: FileList | null) {
+    const selected = Array.from(files ?? []);
+    if (selected.length === 0) return;
+    setPending((prev) => [
+      ...prev,
+      ...selected.map((file, index) => {
+        const url = URL.createObjectURL(file);
+        return {
+          id: `pending-${Date.now()}-${index}`,
+          type: file.type.startsWith("video/") ? ("video" as const) : ("image" as const),
+          url,
+          objectUrl: url,
+          label: file.name,
+        };
+      }),
+    ]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function removePending(id: string) {
+    setPending((prev) => {
+      const target = prev.find((item) => item.id === id);
+      if (target?.objectUrl) URL.revokeObjectURL(target.objectUrl);
+      return prev.filter((item) => item.id !== id);
+    });
+  }
 
   function send() {
     const body = value.trim();
-    if (!body) return;
-    setMessages((prev) => [...prev, { id: `local-${prev.length}`, from: "me", body, time: "now" }]);
+    const urls = Array.from(body.matchAll(/https?:\/\/\S+/g)).map((match, index) => ({
+      id: `url-${Date.now()}-${index}`,
+      type: "url" as const,
+      url: match[0],
+      label: match[0].replace(/^https?:\/\//, "").replace(/\/$/, ""),
+    }));
+    if (!body && pending.length === 0) return;
+
+    const attachments = [...pending.map(({ objectUrl: _objectUrl, ...item }) => item), ...urls];
+    const message: ChatMessage = {
+      id: `local-${Date.now()}`,
+      from: "me",
+      body,
+      time: "now",
+      ...(attachments.length > 0 ? { attachments } : {}),
+    };
+    setMessages((prev) => [...prev, message]);
     setValue("");
+    setPending([]);
     setTyping(true);
-    window.setTimeout(() => setTyping(false), 1800);
+    window.setTimeout(() => setTyping(false), 1200);
     inputRef.current?.focus();
+  }
+
+  function deleteMessage(id: string, scope: "me" | "both") {
+    setMessages((prev) =>
+      prev.map((message) =>
+        message.id === id
+          ? {
+              ...message,
+              body: scope === "both" ? "" : message.body,
+              ...(scope === "both" ? { attachments: [] } : {}),
+              ...(scope === "me" ? { deletedForMe: true } : {}),
+              ...(scope === "both" ? { deletedForBoth: true } : {}),
+            }
+          : message,
+      ),
+    );
+  }
+
+  function deleteAttachment(messageId: string, attachmentId: string, scope: "me" | "both") {
+    setMessages((prev) =>
+      prev.map((message) =>
+        message.id === messageId
+          ? {
+              ...message,
+              attachments: (message.attachments ?? []).filter((item) => item.id !== attachmentId),
+              body:
+                scope === "both" && !message.body && (message.attachments ?? []).length <= 1
+                  ? ""
+                  : message.body,
+            }
+          : message,
+      ),
+    );
+  }
+
+  if (chatDeleted) {
+    return (
+      <section className="grid min-h-[70vh] place-items-center px-6 text-center">
+        <div>
+          <p className="font-display text-lg font-bold">
+            {chatDeleted === "both"
+              ? "Conversation deleted for both parties"
+              : "Conversation deleted"}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            This local demo removed the chat from your current view.
+          </p>
+          <Link to="/messages" className="mt-4 inline-block text-sm font-semibold text-signal">
+            Back to messages
+          </Link>
+        </div>
+      </section>
+    );
   }
 
   return (
@@ -133,76 +275,100 @@ function Thread() {
         </div>
         <button
           type="button"
-          aria-label="Conversation info"
-          className="grid size-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-surface"
+          aria-label="Delete chat for me"
+          onClick={() => setChatDeleted("me")}
+          className="grid size-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-surface hover:text-destructive"
+        >
+          <Trash2 className="size-5" />
+        </button>
+        <button
+          type="button"
+          aria-label="Delete chat for both parties"
+          onClick={() => setChatDeleted("both")}
+          className="grid size-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-surface hover:text-destructive"
         >
           <Info className="size-5" />
         </button>
       </header>
 
-      <div className="flex flex-1 flex-col gap-1 px-4 py-5 sm:px-6">
-        <div className="mx-auto mb-4 max-w-sm rounded-2xl bg-surface/60 px-4 py-3 text-center">
-          <Avatar
-            initials={conversation.person.initials}
-            className="mx-auto mb-2 size-12 rounded-2xl text-base"
-          />
-          <p className="font-display text-sm font-bold">{conversation.person.name}</p>
-          <p className="text-xs text-muted-foreground">
-            @{conversation.person.handle} · this conversation is private
-          </p>
-        </div>
-
-        {messages.map((m, i) => {
-          const prev = messages[i - 1];
-          const next = messages[i + 1];
-          const startsGroup = !prev || prev.from !== m.from;
-          const endsGroup = !next || next.from !== m.from;
-          const mine = m.from === "me";
-          return (
-            <div
-              key={m.id}
-              className={cn(
-                "flex max-w-[85%] flex-col sm:max-w-[70%]",
-                mine ? "self-end items-end" : "self-start items-start",
-                startsGroup && i > 0 && "mt-3",
-              )}
-            >
-              <div
-                className={cn(
-                  "rounded-3xl px-4 py-2.5 text-sm leading-relaxed break-words",
-                  mine ? "bg-primary text-primary-foreground" : "bg-surface text-foreground",
-                  mine && !startsGroup && "rounded-tr-md",
-                  mine && !endsGroup && "rounded-br-md",
-                  !mine && !startsGroup && "rounded-tl-md",
-                  !mine && !endsGroup && "rounded-bl-md",
-                )}
-              >
-                {m.body}
-              </div>
-              {endsGroup && (
-                <span className="mt-1 px-1 text-[10px] text-muted-foreground">
-                  {m.time}
-                  {mine ? " · Sent" : ""}
-                </span>
-              )}
-            </div>
-          );
-        })}
-
-        {typing && (
-          <div className="mt-3 flex items-center gap-1.5 self-start rounded-3xl rounded-bl-md bg-surface px-4 py-3">
-            {[0, 1, 2].map((d) => (
-              <span
-                key={d}
-                className="size-1.5 animate-bounce rounded-full bg-muted-foreground"
-                style={{ animationDelay: `${d * 120}ms` }}
-              />
-            ))}
-            <span className="sr-only">{conversation.person.name} is typing</span>
-          </div>
-        )}
-        <div ref={endRef} />
+      <div className="flex flex-wrap gap-1 border-b border-border px-4 py-2 sm:px-6">
+        {(
+          [
+            ["all", "All media", Images],
+            ["images", "Images", ImagePlus],
+            ["videos", "Videos", Video],
+            ["urls", "URLs", Link2],
+          ] as const
+        ).map(([key, label, Icon]) => (
+          <button
+            key={key}
+            type="button"
+            aria-pressed={mediaFilter === key}
+            onClick={() => setMediaFilter(key)}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+              mediaFilter === key
+                ? "bg-surface-2 text-foreground"
+                : "text-muted-foreground hover:bg-surface hover:text-foreground",
+            )}
+          >
+            <Icon className="size-3.5" />
+            {label}
+          </button>
+        ))}
       </div>
+
+      {isNewChat ? <UserLookup onSelect={startChat} /> : null}
+
+      {mediaFilter !== "all" ? (
+        <MediaPanel items={mediaItems} onDelete={deleteAttachment} />
+      ) : (
+        <div className="flex flex-1 flex-col gap-1 px-4 py-5 sm:px-6">
+          <div className="mx-auto mb-4 max-w-sm rounded-2xl bg-surface/60 px-4 py-3 text-center">
+            <Avatar
+              initials={conversation.person.initials}
+              className="mx-auto mb-2 size-12 rounded-2xl text-base"
+            />
+            <p className="font-display text-sm font-bold">{conversation.person.name}</p>
+            <p className="text-xs text-muted-foreground">
+              @{conversation.person.handle} · this conversation is private
+            </p>
+          </div>
+
+          {visibleMessages.map((message, i) => {
+            const prev = visibleMessages[i - 1];
+            const next = visibleMessages[i + 1];
+            const startsGroup = !prev || prev.from !== message.from;
+            const endsGroup = !next || next.from !== message.from;
+            const mine = message.from === "me";
+            return (
+              <MessageBubble
+                key={message.id}
+                message={message}
+                mine={mine}
+                startsGroup={startsGroup}
+                endsGroup={endsGroup}
+                onDeleteMessage={deleteMessage}
+                onDeleteAttachment={deleteAttachment}
+              />
+            );
+          })}
+
+          {typing && (
+            <div className="mt-3 flex items-center gap-1.5 self-start rounded-3xl rounded-bl-md bg-surface px-4 py-3">
+              {[0, 1, 2].map((d) => (
+                <span
+                  key={d}
+                  className="size-1.5 animate-bounce rounded-full bg-muted-foreground"
+                  style={{ animationDelay: `${d * 120}ms` }}
+                />
+              ))}
+              <span className="sr-only">{conversation.person.name} is typing</span>
+            </div>
+          )}
+          <div ref={endRef} />
+        </div>
+      )}
 
       <form
         onSubmit={(e) => {
@@ -211,10 +377,47 @@ function Thread() {
         }}
         className="sticky bottom-16 z-30 border-t border-border bg-background/95 px-3 py-3 backdrop-blur sm:px-4 md:bottom-0"
       >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,video/*"
+          multiple
+          className="hidden"
+          onChange={(event) => handleFiles(event.target.files)}
+        />
+        {pending.length > 0 && (
+          <div className="mb-2 flex gap-2 overflow-x-auto px-2 pb-1">
+            {pending.map((item) => (
+              <div
+                key={item.id}
+                className="relative h-20 w-28 shrink-0 overflow-hidden rounded-xl border border-border bg-surface"
+              >
+                {item.type === "video" ? (
+                  <video src={item.url} muted className="size-full object-cover" />
+                ) : (
+                  <img
+                    src={item.url}
+                    alt={item.label ?? "Pending image"}
+                    className="size-full object-cover"
+                  />
+                )}
+                <button
+                  type="button"
+                  aria-label={`Remove ${item.label ?? "attachment"}`}
+                  onClick={() => removePending(item.id)}
+                  className="absolute right-1 top-1 grid size-6 place-items-center rounded-full bg-background/85"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="flex items-end gap-2 rounded-3xl bg-surface px-2 py-1.5">
           <button
             type="button"
-            aria-label="Add image"
+            aria-label="Add media"
+            onClick={() => fileInputRef.current?.click()}
             className="grid size-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
           >
             <ImagePlus className="size-4" />
@@ -247,7 +450,7 @@ function Thread() {
           </button>
           <Button
             type="submit"
-            disabled={!value.trim()}
+            disabled={!value.trim() && pending.length === 0}
             size="icon"
             className="size-9 shrink-0 rounded-full"
             aria-label="Send message"
@@ -260,5 +463,255 @@ function Thread() {
         </p>
       </form>
     </section>
+  );
+}
+
+function UserLookup({ onSelect }: { onSelect: (person: Author) => void }) {
+  const [query, setQuery] = useState("");
+  const results = messageContacts.filter((person) => {
+    const term = query.trim().toLowerCase();
+    if (!term) return true;
+    return person.name.toLowerCase().includes(term) || person.handle.toLowerCase().includes(term);
+  });
+
+  return (
+    <div className="border-b border-border px-4 py-4 sm:px-6">
+      <div className="flex items-center gap-2 rounded-full bg-surface px-3.5 py-2">
+        <Search className="size-4 shrink-0 text-muted-foreground" />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Look up a user"
+          aria-label="Look up a user"
+          className="min-w-0 flex-1 bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none"
+        />
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {results.map((person) => (
+          <button
+            key={person.handle}
+            type="button"
+            onClick={() => onSelect(person)}
+            className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-border p-3 text-left transition-colors hover:bg-surface"
+          >
+            <Avatar initials={person.initials} className="size-10" />
+            <span className="min-w-0">
+              <span className="block truncate font-display text-sm font-bold">{person.name}</span>
+              <span className="block truncate text-xs text-muted-foreground">@{person.handle}</span>
+            </span>
+            <UserPlus className="size-4 text-muted-foreground" />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MessageBubble({
+  message,
+  mine,
+  startsGroup,
+  endsGroup,
+  onDeleteMessage,
+  onDeleteAttachment,
+}: {
+  message: ChatMessage;
+  mine: boolean;
+  startsGroup: boolean;
+  endsGroup: boolean;
+  onDeleteMessage: (id: string, scope: "me" | "both") => void;
+  onDeleteAttachment: (messageId: string, attachmentId: string, scope: "me" | "both") => void;
+}) {
+  if (message.deletedForBoth) {
+    return (
+      <div className={cn("my-1 max-w-[85%] sm:max-w-[70%]", mine ? "self-end" : "self-start")}>
+        <div className="rounded-3xl border border-dashed border-border px-4 py-2.5 text-sm text-muted-foreground">
+          Message deleted
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "group flex max-w-[85%] flex-col sm:max-w-[70%]",
+        mine ? "self-end items-end" : "self-start items-start",
+        startsGroup && "mt-3",
+      )}
+    >
+      <div
+        className={cn(
+          "rounded-3xl px-4 py-2.5 text-sm leading-relaxed break-words",
+          mine ? "bg-primary text-primary-foreground" : "bg-surface text-foreground",
+          mine && !startsGroup && "rounded-tr-md",
+          mine && !endsGroup && "rounded-br-md",
+          !mine && !startsGroup && "rounded-tl-md",
+          !mine && !endsGroup && "rounded-bl-md",
+        )}
+      >
+        {message.body ? <p>{message.body}</p> : null}
+        {message.attachments?.length ? (
+          <AttachmentGrid
+            messageId={message.id}
+            attachments={message.attachments}
+            mine={mine}
+            onDeleteAttachment={onDeleteAttachment}
+          />
+        ) : null}
+      </div>
+      <div className="mt-1 flex flex-wrap items-center gap-2 px-1 text-[10px] text-muted-foreground">
+        {endsGroup ? (
+          <span>
+            {message.time}
+            {mine ? " · Sent" : ""}
+          </span>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => onDeleteMessage(message.id, "me")}
+          className="hover:text-destructive"
+        >
+          Delete for me
+        </button>
+        <button
+          type="button"
+          onClick={() => onDeleteMessage(message.id, "both")}
+          className="hover:text-destructive"
+        >
+          Delete for both
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AttachmentGrid({
+  messageId,
+  attachments,
+  mine,
+  onDeleteAttachment,
+}: {
+  messageId: string;
+  attachments: ChatAttachment[];
+  mine: boolean;
+  onDeleteAttachment: (messageId: string, attachmentId: string, scope: "me" | "both") => void;
+}) {
+  return (
+    <div className={cn("mt-2 grid gap-1.5", attachments.length > 1 && "grid-cols-2")}>
+      {attachments.map((attachment) => (
+        <div key={attachment.id} className="overflow-hidden rounded-2xl bg-background/20">
+          {attachment.type === "image" ? (
+            <img
+              src={attachment.url}
+              alt={attachment.label ?? "Message image"}
+              className="aspect-[4/3] w-full object-cover"
+            />
+          ) : attachment.type === "video" ? (
+            <video
+              src={attachment.url}
+              controls
+              preload="metadata"
+              className="aspect-video w-full bg-black object-cover"
+            />
+          ) : (
+            <a
+              href={attachment.url}
+              target="_blank"
+              rel="noreferrer"
+              className={cn(
+                "flex items-center gap-2 px-3 py-2 text-xs underline-offset-2 hover:underline",
+                mine ? "text-primary-foreground" : "text-signal",
+              )}
+            >
+              <Link2 className="size-3.5" />
+              <span className="truncate">{attachment.label ?? attachment.url}</span>
+            </a>
+          )}
+          <div className="flex gap-2 px-2 py-1 text-[10px]">
+            <button
+              type="button"
+              onClick={() => onDeleteAttachment(messageId, attachment.id, "me")}
+              className="text-muted-foreground hover:text-destructive"
+            >
+              Delete media for me
+            </button>
+            <button
+              type="button"
+              onClick={() => onDeleteAttachment(messageId, attachment.id, "both")}
+              className="text-muted-foreground hover:text-destructive"
+            >
+              Delete media for both
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MediaPanel({
+  items,
+  onDelete,
+}: {
+  items: Array<ChatAttachment & { messageId: string; mine: boolean }>;
+  onDelete: (messageId: string, attachmentId: string, scope: "me" | "both") => void;
+}) {
+  return (
+    <div className="grid gap-3 px-4 py-5 sm:grid-cols-2 sm:px-6 xl:grid-cols-3">
+      {items.length === 0 ? (
+        <p className="col-span-full py-10 text-center text-sm text-muted-foreground">
+          No media in this tab yet.
+        </p>
+      ) : (
+        items.map((item) => (
+          <div
+            key={`${item.messageId}-${item.id}`}
+            className="overflow-hidden rounded-xl border border-border bg-surface"
+          >
+            {item.type === "image" ? (
+              <img
+                src={item.url}
+                alt={item.label ?? "Shared image"}
+                className="aspect-[4/3] w-full object-cover"
+              />
+            ) : item.type === "video" ? (
+              <video
+                src={item.url}
+                controls
+                preload="metadata"
+                className="aspect-video w-full bg-black object-cover"
+              />
+            ) : (
+              <a
+                href={item.url}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-2 px-3 py-4 text-sm font-semibold text-signal underline-offset-2 hover:underline"
+              >
+                <Link2 className="size-4" />
+                <span className="truncate">{item.label ?? item.url}</span>
+              </a>
+            )}
+            <div className="flex flex-wrap gap-2 px-3 py-2 text-xs">
+              <button
+                type="button"
+                onClick={() => onDelete(item.messageId, item.id, "me")}
+                className="text-muted-foreground hover:text-destructive"
+              >
+                Delete for me
+              </button>
+              <button
+                type="button"
+                onClick={() => onDelete(item.messageId, item.id, "both")}
+                className="text-muted-foreground hover:text-destructive"
+              >
+                Delete for both
+              </button>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
   );
 }
