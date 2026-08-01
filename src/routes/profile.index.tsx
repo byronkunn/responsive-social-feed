@@ -7,16 +7,10 @@ import { Button } from "@/components/ui/button";
 import { PostCard } from "@/components/pulse/post-card";
 import { useHideLikes } from "@/hooks/use-preferences";
 import { useProfile } from "@/hooks/use-session";
-import {
-  currentUser,
-  posts,
-  replies as seedReplies,
-  type Post,
-  type Reply,
-} from "@/lib/pulse-data";
+import { currentUser, type Post, type Reply } from "@/lib/pulse-data";
 import { requireClientSession } from "@/lib/require-auth";
 import {
-  fetchBookmarkedPosts,
+  fetchConnections,
   fetchReactedPosts,
   fetchUserPosts,
   fetchUserReplies,
@@ -47,11 +41,15 @@ type Tab = (typeof tabs)[number];
 function Profile() {
   const [tab, setTab] = useState<Tab>("Pulses");
   const { hideLikes } = useHideLikes();
-  const { profile } = useProfile();
+  const { profile, loading: profileLoading } = useProfile();
   const [userPosts, setUserPosts] = useState<Post[]>([]);
   const [userReplies, setUserReplies] = useState<Reply[]>([]);
   const [echoed, setEchoed] = useState<Post[]>([]);
   const [liked, setLiked] = useState<Post[]>([]);
+  const [followingCount, setFollowingCount] = useState(0);
+  const [followerCount, setFollowerCount] = useState(0);
+  const [contentLoading, setContentLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   const name = profile?.display_name ?? currentUser.name;
   const handle = profile?.handle ?? currentUser.handle;
@@ -61,33 +59,66 @@ function Profile() {
   const initials = (profile?.initials ?? currentUser.initials).slice(0, 2).toUpperCase();
 
   useEffect(() => {
-    if (profile?.id) {
-      if (profile.id.startsWith("local-")) {
-        setUserPosts(posts.filter((post) => post.author.handle === "adarowe"));
-        setUserReplies(seedReplies.slice(0, 5));
-        setEchoed(posts.filter((_, index) => index % 5 === 0));
-        setLiked(posts.filter((_, index) => index % 4 === 0));
-        return;
-      }
+    let active = true;
 
-      fetchUserPosts(profile.id)
-        .then((fetched) => {
-          setUserPosts(fetched);
-        })
-        .catch(() => undefined);
-      fetchUserReplies(profile.id)
-        .then(setUserReplies)
-        .catch(() => undefined);
-      fetchReactedPosts("echo")
-        .then(setEchoed)
-        .catch(() => undefined);
-      fetchBookmarkedPosts()
-        .then(setLiked)
-        .catch(() => undefined);
+    function resetProfileData() {
+      setUserPosts([]);
+      setUserReplies([]);
+      setEchoed([]);
+      setLiked([]);
+      setFollowingCount(0);
+      setFollowerCount(0);
     }
+
+    if (!profile?.id) {
+      resetProfileData();
+      setContentLoading(false);
+      setLoadError(false);
+      return;
+    }
+
+    if (profile.id.startsWith("local-")) {
+      resetProfileData();
+      setContentLoading(false);
+      setLoadError(false);
+      return;
+    }
+
+    setContentLoading(true);
+    setLoadError(false);
+    Promise.all([
+      fetchUserPosts(profile.id),
+      fetchUserReplies(profile.id),
+      fetchReactedPosts("echo"),
+      fetchReactedPosts("spark"),
+      fetchConnections("following"),
+      fetchConnections("followers"),
+    ])
+      .then(([posts, replies, echoes, likes, following, followers]) => {
+        if (!active) return;
+        setUserPosts(posts);
+        setUserReplies(replies);
+        setEchoed(echoes);
+        setLiked(likes);
+        setFollowingCount(following.length);
+        setFollowerCount(followers.length);
+      })
+      .catch(() => {
+        if (!active) return;
+        resetProfileData();
+        setLoadError(true);
+      })
+      .finally(() => {
+        if (active) setContentLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, [profile?.id]);
 
   const own = userPosts;
+  const loadingActivity = profileLoading || contentLoading;
   const media = own.filter(
     (post) =>
       post.imageUrl ||
@@ -119,11 +150,11 @@ function Profile() {
         <p className="mt-3 max-w-prose text-sm leading-relaxed text-foreground/90">{bio}</p>
         <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm">
           <Link to="/profile/following" className="hover:underline">
-            <strong className="font-display">1,204</strong>{" "}
+            <strong className="font-display">{formatCount(followingCount)}</strong>{" "}
             <span className="text-muted-foreground">Following</span>
           </Link>
           <Link to="/profile/followers" className="hover:underline">
-            <strong className="font-display">18.9K</strong>{" "}
+            <strong className="font-display">{formatCount(followerCount)}</strong>{" "}
             <span className="text-muted-foreground">Followers</span>
           </Link>
         </div>
@@ -171,14 +202,31 @@ function Profile() {
         </div>
       ) : null}
 
-      {tab === "Pulses" &&
+      {loadError ? (
+        <div className="border-b border-border bg-surface/50 px-4 py-3 text-sm text-muted-foreground sm:px-6">
+          Profile data is unavailable. Apply the Supabase migrations and sign in with a production
+          account to load real profile activity.
+        </div>
+      ) : null}
+
+      {loadingActivity && <Empty label="Loading profile activity..." />}
+
+      {!loadingActivity &&
+        tab === "Pulses" &&
         (own.length ? (
-          own.map((p) => <PostCard key={p.id} post={p} />)
+          own.map((p) => (
+            <PostCard
+              key={p.id}
+              post={p}
+              onDelete={(id) => setUserPosts((current) => current.filter((post) => post.id !== id))}
+            />
+          ))
         ) : (
           <Empty label="No pulses posted yet" />
         ))}
 
-      {tab === "Replies" &&
+      {!loadingActivity &&
+        tab === "Replies" &&
         (userReplies.length ? (
           userReplies.slice(0, 25).map((r) => (
             <article key={r.id} className="border-b border-border px-4 py-4 sm:px-6">
@@ -206,21 +254,24 @@ function Profile() {
           <Empty label="No replies yet" />
         ))}
 
-      {tab === "Media" &&
+      {!loadingActivity &&
+        tab === "Media" &&
         (media.length ? (
           media.map((p) => <PostCard key={p.id} post={p} />)
         ) : (
           <Empty label="No media attached yet" />
         ))}
 
-      {tab === "Echoes" &&
+      {!loadingActivity &&
+        tab === "Echoes" &&
         (echoed.length ? (
           echoed.map((p) => <PostCard key={p.id} post={p} />)
         ) : (
           <Empty label="No echoes yet" />
         ))}
 
-      {tab === "Likes" &&
+      {!loadingActivity &&
+        tab === "Likes" &&
         (liked.length ? (
           liked.map((p) => <PostCard key={p.id} post={p} />)
         ) : (
@@ -232,4 +283,10 @@ function Profile() {
 
 function Empty({ label }: { label: string }) {
   return <p className="px-4 py-10 text-center text-sm text-muted-foreground sm:px-6">{label}</p>;
+}
+
+function formatCount(value: number) {
+  if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
+  return String(value);
 }
