@@ -21,7 +21,7 @@ import { Avatar } from "./avatar";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfile } from "@/hooks/use-session";
-import { currentUser, posts as seedPosts, type Connection } from "@/lib/pulse-data";
+import { currentUser, type Connection } from "@/lib/pulse-data";
 import {
   fetchExploreData,
   fetchSuggestedProfiles,
@@ -62,17 +62,11 @@ export function AppShell({ children, rail = true }: { children: React.ReactNode;
     fetchExploreData()
       .then((data) => {
         if (active) {
-          setRailTrends(
-            data.trends.length > 0
-              ? data.trends.slice(0, 5)
-              : import.meta.env.DEV
-                ? buildRailTrendsFromSeed()
-                : [],
-          );
+          setRailTrends(data.trends.slice(0, 5));
         }
       })
       .catch(() => {
-        if (active) setRailTrends(import.meta.env.DEV ? buildRailTrendsFromSeed() : []);
+        if (active) setRailTrends([]);
       });
     fetchSuggestedProfiles("", 3)
       .then((profiles) => {
@@ -223,24 +217,6 @@ export function AppShell({ children, rail = true }: { children: React.ReactNode;
       </nav>
     </div>
   );
-}
-
-function buildRailTrendsFromSeed(): ExploreTrend[] {
-  const counts = new Map<string, number>();
-  for (const post of seedPosts) {
-    if (post.tag) counts.set(post.tag, (counts.get(post.tag) ?? 0) + 1);
-  }
-
-  return Array.from(counts.entries())
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .slice(0, 5)
-    .map(([tag, count]) => ({
-      tag,
-      topic: "Trending tag",
-      title: `#${tag}`,
-      count: `${count} pulse${count === 1 ? "" : "s"}`,
-      posts: count,
-    }));
 }
 
 function SuggestionRow({ person, signedIn }: { person: Connection; signedIn: boolean }) {

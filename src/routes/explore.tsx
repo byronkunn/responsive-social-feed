@@ -4,10 +4,8 @@ import { Hash, Plus, Search, TrendingUp, X } from "lucide-react";
 import { AppShell, TopBar } from "@/components/pulse/app-shell";
 import { PostCard } from "@/components/pulse/post-card";
 import { useFollowedTags } from "@/hooks/use-preferences";
-import { posts as seedPosts, trends as seedTrends, type Post } from "@/lib/pulse-data";
+import { type Post } from "@/lib/pulse-data";
 import { fetchExploreData, type ExploreTrend } from "@/lib/social-api";
-
-const suggestedTags = ["building", "weather", "notes", "design", "typography", "localfirst"];
 
 export const Route = createFileRoute("/explore")({
   head: () => ({
@@ -32,7 +30,7 @@ function Explore() {
   const [q, setQ] = useState("");
   const [explorePosts, setExplorePosts] = useState<Post[]>([]);
   const [trends, setTrends] = useState<ExploreTrend[]>([]);
-  const [availableTags, setAvailableTags] = useState<string[]>(suggestedTags);
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const { tags, isFollowing, toggleTag } = useFollowedTags();
@@ -46,28 +44,16 @@ function Explore() {
     fetchExploreData()
       .then((data) => {
         if (!active) return;
-        const fallbackPosts = import.meta.env.DEV && data.posts.length === 0 ? seedPosts : [];
-        const posts = data.posts.length > 0 ? data.posts : fallbackPosts;
-        const fallbackTags = import.meta.env.DEV
-          ? Array.from(new Set(seedPosts.map((post) => post.tag).filter(Boolean) as string[]))
-          : [];
-
-        setExplorePosts(posts);
-        setTrends(data.trends.length > 0 ? data.trends : buildTrendsFromPosts(fallbackPosts));
-        setAvailableTags(
-          data.suggestedTags.length > 0
-            ? data.suggestedTags
-            : fallbackTags.length > 0
-              ? fallbackTags
-              : suggestedTags,
-        );
+        setExplorePosts(data.posts);
+        setTrends(data.trends);
+        setAvailableTags(data.suggestedTags);
         setLoadError(false);
       })
       .catch(() => {
         if (!active) return;
-        setExplorePosts(import.meta.env.DEV ? seedPosts : []);
-        setTrends(import.meta.env.DEV ? buildTrendsFromPosts(seedPosts) : []);
-        setAvailableTags(import.meta.env.DEV ? demoTags() : suggestedTags);
+        setExplorePosts([]);
+        setTrends([]);
+        setAvailableTags([]);
         setLoadError(true);
       })
       .finally(() => {
@@ -89,17 +75,6 @@ function Explore() {
           (post.tag ?? "").toLowerCase().includes(term),
       )
     : explorePosts;
-
-  const activeTrends =
-    trends.length > 0
-      ? trends
-      : seedTrends.map((trend) => ({
-          tag: trend.title.replace(/^#/, "").toLowerCase(),
-          topic: trend.topic,
-          title: trend.title,
-          count: trend.count,
-          posts: 0,
-        }));
 
   return (
     <AppShell>
@@ -183,28 +158,34 @@ function Explore() {
         <h3 className="mt-5 font-display text-xs font-bold uppercase tracking-wide text-muted-foreground">
           Suggested tags
         </h3>
-        <ul className="mt-2 flex flex-wrap gap-2">
-          {availableTags.map((t) => {
-            const on = isFollowing(t);
-            return (
-              <li key={t}>
-                <button
-                  type="button"
-                  onClick={() => toggleTag(t)}
-                  aria-pressed={on}
-                  className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
-                    on
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-surface text-muted-foreground hover:bg-surface-2 hover:text-foreground"
-                  }`}
-                >
-                  {on ? <Hash className="size-3.5" /> : <Plus className="size-3.5" />}
-                  {t}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        {availableTags.length === 0 ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Suggested tags appear from real hashtags in public posts.
+          </p>
+        ) : (
+          <ul className="mt-2 flex flex-wrap gap-2">
+            {availableTags.map((t) => {
+              const on = isFollowing(t);
+              return (
+                <li key={t}>
+                  <button
+                    type="button"
+                    onClick={() => toggleTag(t)}
+                    aria-pressed={on}
+                    className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
+                      on
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-surface text-muted-foreground hover:bg-surface-2 hover:text-foreground"
+                    }`}
+                  >
+                    {on ? <Hash className="size-3.5" /> : <Plus className="size-3.5" />}
+                    {t}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </section>
 
       <section className="grid gap-3 border-b border-border p-4 sm:grid-cols-2 sm:p-6">
@@ -212,12 +193,12 @@ function Explore() {
           Array.from({ length: 4 }).map((_, index) => (
             <div key={index} className="h-[100px] animate-pulse rounded-2xl bg-surface" />
           ))
-        ) : activeTrends.length === 0 ? (
+        ) : trends.length === 0 ? (
           <p className="sm:col-span-2 text-sm text-muted-foreground">
             Trends will appear after people post with hashtags.
           </p>
         ) : (
-          activeTrends.map((t) => (
+          trends.map((t) => (
             <Link
               key={t.title}
               to="/tag/$tag"
@@ -242,7 +223,7 @@ function Explore() {
           </h2>
           {loadError && (
             <p className="mt-1 text-xs text-muted-foreground">
-              Live explore data is unavailable, so local demo posts are shown.
+              Live Supabase posts are unavailable. Apply the project migrations to populate Explore.
             </p>
           )}
         </div>
@@ -272,27 +253,4 @@ function Explore() {
       )}
     </AppShell>
   );
-}
-
-function demoTags() {
-  return Array.from(new Set(seedPosts.map((post) => post.tag).filter(Boolean) as string[]));
-}
-
-function buildTrendsFromPosts(posts: Post[]): ExploreTrend[] {
-  const counts = new Map<string, number>();
-  for (const post of posts) {
-    if (!post.tag) continue;
-    counts.set(post.tag, (counts.get(post.tag) ?? 0) + 1);
-  }
-
-  return Array.from(counts.entries())
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .slice(0, 8)
-    .map(([tag, count]) => ({
-      tag,
-      topic: "Trending tag",
-      title: `#${tag}`,
-      count: `${count} pulse${count === 1 ? "" : "s"}`,
-      posts: count,
-    }));
 }
