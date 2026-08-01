@@ -70,6 +70,20 @@ export type PulseNotification = {
   read: boolean;
 };
 
+export type ExploreTrend = {
+  tag: string;
+  topic: string;
+  title: string;
+  count: string;
+  posts: number;
+};
+
+export type ExploreData = {
+  posts: Post[];
+  trends: ExploreTrend[];
+  suggestedTags: string[];
+};
+
 const POST_BODY_LIMIT = 280;
 const REPLY_BODY_LIMIT = 280;
 const MAX_MEDIA_ATTACHMENTS = 20;
@@ -131,6 +145,18 @@ function isVideoUrl(url: string) {
   return /\.(mp4|webm|ogg)(\?|#|$)/i.test(url);
 }
 
+function extractHashtags(body: string) {
+  return Array.from(body.matchAll(/(^|\s)#([a-z0-9][a-z0-9_-]{1,48})/gi))
+    .map((match) => match[2]?.toLowerCase())
+    .filter((tag): tag is string => !!tag);
+}
+
+function postTags(post: Post) {
+  return [
+    ...new Set([...(post.tag ? [post.tag.toLowerCase()] : []), ...extractHashtags(post.body)]),
+  ];
+}
+
 function toPost(
   post: PersistedPost,
   counts: { spark: number; echo: number; bookmark: number } = { spark: 0, echo: 0, bookmark: 0 },
@@ -138,6 +164,7 @@ function toPost(
   const mediaUrls = post.media_urls;
   const imageUrls = mediaUrls.filter((url) => !isVideoUrl(url));
   const videoUrls = mediaUrls.filter(isVideoUrl);
+  const hashtags = extractHashtags(post.body);
 
   return {
     id: post.id,
@@ -148,6 +175,7 @@ function toPost(
     echoes: counts.echo,
     sparks: counts.spark,
     views: "—",
+    ...(hashtags[0] ? { tag: hashtags[0] } : {}),
     ...(imageUrls.length > 0 ? { imageUrls, imageUrl: imageUrls[0] } : {}),
     ...(videoUrls.length > 0 ? { videoUrls, videoUrl: videoUrls[0] } : {}),
   };
@@ -183,6 +211,40 @@ export async function fetchPosts(): Promise<Post[]> {
   }
 
   return rows.map((post) => toPost(post, counts.get(post.id)));
+}
+
+export async function fetchExploreData(): Promise<ExploreData> {
+  const posts = await fetchPosts();
+  const tagCounts = new Map<string, number>();
+
+  for (const post of posts) {
+    for (const tag of postTags(post)) {
+      tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
+    }
+  }
+
+  const trends = Array.from(tagCounts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 8)
+    .map(([tag, count]) => ({
+      tag,
+      topic: "Trending tag",
+      title: `#${tag}`,
+      count: `${count} pulse${count === 1 ? "" : "s"}`,
+      posts: count,
+    }));
+
+  const popularPosts = [...posts].sort((a, b) => {
+    const bScore = b.sparks * 3 + b.echoes * 4 + b.replies * 2;
+    const aScore = a.sparks * 3 + a.echoes * 4 + a.replies * 2;
+    return bScore - aScore;
+  });
+
+  return {
+    posts: popularPosts,
+    trends,
+    suggestedTags: trends.map((trend) => trend.tag),
+  };
 }
 
 export async function uploadMedia(file: File): Promise<string> {
