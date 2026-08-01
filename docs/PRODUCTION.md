@@ -130,8 +130,9 @@ Auth behavior:
   to confirm by email.
 - Confirmation links should redirect to `/auth`; that route exchanges the auth
   code for a session and then sends the user to the feed.
-- Local prototype fallback auth is development-only and is not active in
-  production builds.
+- Local prototype fallback auth is disabled by default. Only set
+  `VITE_ENABLE_LOCAL_AUTH_FALLBACK=true` for offline UI prototyping; leave it
+  false for online Supabase testing and all production builds.
 
 ## Cloudflare
 
@@ -144,6 +145,7 @@ SUPABASE_URL
 SUPABASE_PUBLISHABLE_KEY
 VITE_SUPABASE_URL
 VITE_SUPABASE_PUBLISHABLE_KEY
+VITE_ENABLE_LOCAL_AUTH_FALLBACK
 VITE_SENTRY_DSN
 VITE_SENTRY_TRACES_SAMPLE_RATE
 ```

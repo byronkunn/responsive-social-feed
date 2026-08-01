@@ -8,7 +8,11 @@ import { lovable } from "@/integrations/lovable/index";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { localProfileFromStorage, type PulseProfile } from "@/hooks/use-session";
+import {
+  isLocalAuthFallbackEnabled,
+  localProfileFromStorage,
+  type PulseProfile,
+} from "@/hooks/use-session";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -66,7 +70,7 @@ function AuthPage() {
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
   const router = useRouter();
-  const localAuthEnabled = import.meta.env.DEV;
+  const localAuthEnabled = isLocalAuthFallbackEnabled();
 
   function makeLocalProfile(name: string, emailAddress: string): PulseProfile {
     const base = name.trim() || emailAddress.split("@")[0] || "Pulse Member";

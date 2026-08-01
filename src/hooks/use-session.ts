@@ -11,8 +11,12 @@ export type PulseProfile = {
   initials: string;
 };
 
+export function isLocalAuthFallbackEnabled() {
+  return import.meta.env.DEV && import.meta.env["VITE_ENABLE_LOCAL_AUTH_FALLBACK"] === "true";
+}
+
 export function localProfileFromStorage(): PulseProfile | null {
-  if (!import.meta.env.DEV) return null;
+  if (!isLocalAuthFallbackEnabled()) return null;
   if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem("pulse_local_user");

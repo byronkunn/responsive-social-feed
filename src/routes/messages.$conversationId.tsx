@@ -20,6 +20,7 @@ import { AppShell } from "@/components/pulse/app-shell";
 import { Avatar } from "@/components/pulse/avatar";
 import { ConversationList, isOnline } from "@/components/pulse/conversation-list";
 import { Button } from "@/components/ui/button";
+import { isLocalAuthFallbackEnabled } from "@/hooks/use-session";
 import {
   type Author,
   type ChatAttachment,
@@ -166,7 +167,7 @@ function Thread({ initialConversation }: { initialConversation: Conversation }) 
       window.history.replaceState({}, "", `/messages/${next.id}`);
       window.setTimeout(() => inputRef.current?.focus(), 50);
     } catch (error) {
-      if (!import.meta.env.DEV) {
+      if (!isLocalAuthFallbackEnabled()) {
         toast.error(error instanceof Error ? error.message : "Could not start chat");
         return;
       }

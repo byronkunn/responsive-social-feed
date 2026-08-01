@@ -6,6 +6,7 @@ import { Avatar } from "@/components/pulse/avatar";
 import { PostCard } from "@/components/pulse/post-card";
 import { ReportDialog } from "@/components/pulse/report-dialog";
 import { Button } from "@/components/ui/button";
+import { isLocalAuthFallbackEnabled } from "@/hooks/use-session";
 import { type Author, type Post } from "@/lib/pulse-data";
 import { fetchPostsByHandle, fetchProfileByHandle, toggleFollowProfile } from "@/lib/social-api";
 import { toast } from "sonner";
@@ -97,7 +98,7 @@ function UserProfile() {
       await toggleFollowProfile(profile.handle, previous);
       toast.success(previous ? `Unfollowed @${profile.handle}` : `Following @${profile.handle}`);
     } catch (error) {
-      if (!import.meta.env.DEV) {
+      if (!isLocalAuthFallbackEnabled()) {
         setFollowing(previous);
         toast.error(error instanceof Error ? error.message : "Follow update failed");
       }

@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AppShell, TopBar } from "@/components/pulse/app-shell";
 import { Composer } from "@/components/pulse/composer";
 import { PostCard } from "@/components/pulse/post-card";
-import { useProfile } from "@/hooks/use-session";
+import { isLocalAuthFallbackEnabled, useProfile } from "@/hooks/use-session";
 import { type Post } from "@/lib/pulse-data";
 import { createPost, fetchPosts } from "@/lib/social-api";
 import { toast } from "sonner";
@@ -80,7 +80,7 @@ function Home() {
             setPosts(persisted);
             setLoadError(false);
           } catch (error) {
-            if (import.meta.env.DEV && profile?.id.startsWith("local-")) {
+            if (isLocalAuthFallbackEnabled() && profile?.id.startsWith("local-")) {
               const author = {
                 name: profile.display_name,
                 handle: profile.handle,

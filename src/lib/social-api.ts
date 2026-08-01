@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import { localProfileFromStorage } from "@/hooks/use-session";
+import { isLocalAuthFallbackEnabled, localProfileFromStorage } from "@/hooks/use-session";
 import {
   type Author,
   type ChatAttachment,
@@ -277,7 +277,7 @@ function localProfileId() {
 }
 
 function localProfileIsAdmin() {
-  return import.meta.env.DEV && isLocalProfileId(localProfileId());
+  return isLocalAuthFallbackEnabled() && isLocalProfileId(localProfileId());
 }
 
 function normalizeTextBody(body: string, limit: number) {
@@ -566,7 +566,7 @@ export async function uploadMedia(file: File): Promise<string> {
     }
     if (error) throw error;
   } catch (error) {
-    if (!import.meta.env.DEV) {
+    if (!isLocalAuthFallbackEnabled()) {
       throw error instanceof Error ? error : new Error("Upload failed");
     }
     // Local prototype fallback when Supabase Storage is not configured.
