@@ -111,10 +111,118 @@ export type ExploreData = {
   suggestedTags: string[];
 };
 
+export type AdminPermission =
+  | "view_admin"
+  | "moderate_content"
+  | "manage_reports"
+  | "manage_users"
+  | "manage_roles"
+  | "view_analytics";
+
+export type AdminAccess = {
+  role: "admin" | "moderator" | "member";
+  permissions: AdminPermission[];
+};
+
+export type AdminAnalytics = {
+  totals: Record<string, number>;
+  last24h: Record<string, number>;
+  topPosts: {
+    id: string;
+    body: string;
+    status: string;
+    author_name: string | null;
+    author_handle: string | null;
+    sparks: number;
+    echoes: number;
+    replies: number;
+  }[];
+  dailyActivity: {
+    day: string;
+    posts: number;
+    replies: number;
+    messages: number;
+    reports: number;
+  }[];
+};
+
+export type AdminUser = PersistedProfile & {
+  created_at: string;
+  role: "admin" | "moderator" | "member";
+  permissions: AdminPermission[];
+  restriction?: {
+    status: "suspended" | "banned";
+    reason: string;
+    expires_at: string | null;
+  };
+};
+
+export type AdminReport = {
+  id: string;
+  target_type: "post" | "reply" | "profile" | "message";
+  target_id: string;
+  reason: string;
+  status: "pending" | "actioned" | "dismissed";
+  created_at: string;
+  reporter?: Author;
+  moderator?: Author;
+  moderator_note?: string | null;
+};
+
+export type AdminPost = {
+  id: string;
+  body: string;
+  created_at: string;
+  moderation_status: "visible" | "hidden" | "removed";
+  moderation_reason: string | null;
+  author: Author;
+};
+
+export type AdminAuditAction = {
+  id: string;
+  action_type: string;
+  target_type: string;
+  target_id: string;
+  reason: string;
+  created_at: string;
+  moderator?: Author;
+  target?: Author;
+};
+
+export type AdminDashboard = {
+  access: AdminAccess;
+  analytics: AdminAnalytics;
+  users: AdminUser[];
+  reports: AdminReport[];
+  posts: AdminPost[];
+  actions: AdminAuditAction[];
+};
+
+type AdminRoleRow = {
+  profile_id: string;
+  role: "admin" | "moderator";
+  permissions: string[];
+};
+
+type AdminRestrictionRow = {
+  profile_id: string;
+  status: "active" | "suspended" | "banned";
+  reason: string;
+  expires_at: string | null;
+};
+
 const POST_BODY_LIMIT = 280;
 const REPLY_BODY_LIMIT = 280;
 const MAX_MEDIA_ATTACHMENTS = 20;
 const LOCAL_DRAFTS_KEY = "pulse.local-drafts";
+const ADMIN_PERMISSIONS: AdminPermission[] = [
+  "view_admin",
+  "moderate_content",
+  "manage_reports",
+  "manage_users",
+  "manage_roles",
+  "view_analytics",
+];
 
 function age(iso: string) {
   const seconds = Math.max(1, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
@@ -167,6 +275,10 @@ function localProfileId() {
   return localProfileFromStorage()?.id ?? null;
 }
 
+function localProfileIsAdmin() {
+  return import.meta.env.DEV && isLocalProfileId(localProfileId());
+}
+
 function normalizeTextBody(body: string, limit: number) {
   const trimmed = body.trim();
   if (trimmed.length > limit) {
@@ -204,6 +316,74 @@ function readLocalDrafts(): LocalDraft[] {
 function writeLocalDrafts(drafts: LocalDraft[]) {
   if (typeof window === "undefined") return;
   localStorage.setItem(LOCAL_DRAFTS_KEY, JSON.stringify(drafts));
+}
+
+function emptyAdminAnalytics(): AdminAnalytics {
+  return {
+    totals: {
+      users: 0,
+      posts: 0,
+      visiblePosts: 0,
+      hiddenPosts: 0,
+      replies: 0,
+      messages: 0,
+      reportsOpen: 0,
+      reportsResolved: 0,
+      restrictedUsers: 0,
+    },
+    last24h: {
+      posts: 0,
+      replies: 0,
+      messages: 0,
+      reports: 0,
+      newUsers: 0,
+    },
+    topPosts: [],
+    dailyActivity: [],
+  };
+}
+
+function localAdminDashboard(): AdminDashboard {
+  const profile = localProfileFromStorage();
+  const access: AdminAccess = { role: "admin", permissions: ADMIN_PERMISSIONS };
+  const user: AdminUser = {
+    id: profile?.id ?? "local-admin",
+    display_name: profile?.display_name ?? "Local Admin",
+    handle: profile?.handle ?? "admin",
+    initials: profile?.initials ?? "LA",
+    bio: profile?.bio ?? "Development admin account.",
+    created_at: new Date().toISOString(),
+    role: "admin",
+    permissions: ADMIN_PERMISSIONS,
+  };
+  return {
+    access,
+    analytics: {
+      ...emptyAdminAnalytics(),
+      totals: {
+        users: 1,
+        posts: 0,
+        visiblePosts: 0,
+        hiddenPosts: 0,
+        replies: 0,
+        messages: 0,
+        reportsOpen: 0,
+        reportsResolved: 0,
+        restrictedUsers: 0,
+      },
+      dailyActivity: Array.from({ length: 14 }, (_, index) => ({
+        day: `${index + 1}`,
+        posts: 0,
+        replies: 0,
+        messages: 0,
+        reports: 0,
+      })),
+    },
+    users: [user],
+    reports: [],
+    posts: [],
+    actions: [],
+  };
 }
 
 function normalizeAttachmentUrls(attachments?: ChatAttachment[]) {
@@ -1145,6 +1325,272 @@ export async function createCommunity(name: string, description: string) {
     slug,
     name: name.trim(),
     description: description.trim(),
+  });
+  if (error) throw error;
+}
+
+function normalizeAdminAccess(value: unknown): AdminAccess {
+  const record = (value ?? {}) as Partial<AdminAccess>;
+  const role = record.role === "admin" || record.role === "moderator" ? record.role : "member";
+  const permissions = Array.isArray(record.permissions)
+    ? record.permissions.filter((permission): permission is AdminPermission =>
+        ADMIN_PERMISSIONS.includes(permission as AdminPermission),
+      )
+    : [];
+  return { role, permissions };
+}
+
+function hasAdminPermission(access: AdminAccess, permission: AdminPermission) {
+  return access.role === "admin" || access.permissions.includes(permission);
+}
+
+function profileFromJoined(value: unknown): PersistedProfile | null {
+  if (!value) return null;
+  if (Array.isArray(value)) return (value[0] as PersistedProfile | undefined) ?? null;
+  return value as PersistedProfile;
+}
+
+export async function fetchAdminAccess(): Promise<AdminAccess> {
+  if (localProfileIsAdmin()) {
+    return { role: "admin", permissions: ADMIN_PERMISSIONS };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any).rpc("current_moderation_role");
+  if (error) return { role: "member", permissions: [] };
+  return normalizeAdminAccess(data);
+}
+
+export async function fetchAdminDashboard(): Promise<AdminDashboard> {
+  if (localProfileIsAdmin()) {
+    return localAdminDashboard();
+  }
+
+  const access = await fetchAdminAccess();
+  if (!hasAdminPermission(access, "view_admin")) {
+    throw new Error("Admin or moderator access required");
+  }
+
+  const [
+    analyticsResult,
+    usersResult,
+    rolesResult,
+    restrictionsResult,
+    reportsResult,
+    postsResult,
+    actionsResult,
+  ] = await Promise.all([
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any).rpc("admin_analytics"),
+    supabase
+      .from("profiles")
+      .select("id, display_name, handle, initials, bio, created_at")
+      .order("created_at", { ascending: false })
+      .limit(100),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any)
+      .from("moderation_role_members")
+      .select(
+        "profile_id, role, permissions, profiles!moderation_role_members_profile_id_fkey(id, display_name, handle, initials, bio)",
+      )
+      .order("updated_at", { ascending: false }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any)
+      .from("moderation_user_restrictions")
+      .select("profile_id, status, reason, expires_at"),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any)
+      .from("moderation_reports")
+      .select(
+        "id, target_type, target_id, reason, status, moderator_note, created_at, reporter:profiles!moderation_reports_reporter_id_fkey(display_name, handle, initials), moderator:profiles!moderation_reports_moderator_id_fkey(display_name, handle, initials)",
+      )
+      .order("created_at", { ascending: false })
+      .limit(30),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any)
+      .from("posts")
+      .select(
+        "id, body, created_at, moderation_status, moderation_reason, profiles!posts_author_id_fkey(display_name, handle, initials)",
+      )
+      .order("created_at", { ascending: false })
+      .limit(30),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any)
+      .from("moderation_actions")
+      .select(
+        "id, action_type, target_type, target_id, reason, created_at, moderator:profiles!moderation_actions_moderator_id_fkey(display_name, handle, initials), target:profiles!moderation_actions_target_profile_id_fkey(display_name, handle, initials)",
+      )
+      .order("created_at", { ascending: false })
+      .limit(30),
+  ]);
+
+  for (const result of [
+    usersResult,
+    rolesResult,
+    restrictionsResult,
+    reportsResult,
+    postsResult,
+    actionsResult,
+  ]) {
+    if (result.error) throw result.error;
+  }
+
+  if (analyticsResult.error) throw analyticsResult.error;
+  const analyticsData = analyticsResult.data as AdminAnalytics | { error?: string } | null;
+  if (analyticsData && "error" in analyticsData && analyticsData.error) {
+    throw new Error(analyticsData.error);
+  }
+
+  const roles = new Map<string, AdminRoleRow>(
+    ((rolesResult.data ?? []) as AdminRoleRow[]).map((role) => [role.profile_id, role]),
+  );
+  const restrictions = new Map<string, AdminRestrictionRow>(
+    ((restrictionsResult.data ?? []) as AdminRestrictionRow[]).map((restriction) => [
+      restriction.profile_id,
+      restriction,
+    ]),
+  );
+
+  const users = ((usersResult.data ?? []) as (PersistedProfile & { created_at: string })[]).map(
+    (user) => {
+      const role = roles.get(user.id);
+      const restriction = restrictions.get(user.id);
+      return {
+        ...user,
+        role: (role?.role ?? "member") as AdminUser["role"],
+        permissions: ((role?.permissions ?? []) as string[]).filter(
+          (permission): permission is AdminPermission =>
+            ADMIN_PERMISSIONS.includes(permission as AdminPermission),
+        ),
+        ...(restriction && restriction.status !== "active"
+          ? {
+              restriction: {
+                status: restriction.status as "suspended" | "banned",
+                reason: restriction.reason as string,
+                expires_at: restriction.expires_at as string | null,
+              },
+            }
+          : {}),
+      };
+    },
+  );
+
+  return {
+    access,
+    analytics: (analyticsData as AdminAnalytics | null) ?? emptyAdminAnalytics(),
+    users,
+    reports: ((reportsResult.data ?? []) as unknown[]).map((row) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const report = row as any;
+      return {
+        id: report.id,
+        target_type: report.target_type,
+        target_id: report.target_id,
+        reason: report.reason,
+        status: report.status,
+        created_at: report.created_at,
+        moderator_note: report.moderator_note,
+        ...(profileFromJoined(report.reporter)
+          ? { reporter: toAuthor(profileFromJoined(report.reporter)) }
+          : {}),
+        ...(profileFromJoined(report.moderator)
+          ? { moderator: toAuthor(profileFromJoined(report.moderator)) }
+          : {}),
+      };
+    }),
+    posts: ((postsResult.data ?? []) as unknown[]).map((row) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const post = row as any;
+      return {
+        id: post.id,
+        body: post.body,
+        created_at: post.created_at,
+        moderation_status: post.moderation_status,
+        moderation_reason: post.moderation_reason,
+        author: toAuthor(profileFromJoined(post.profiles)),
+      };
+    }),
+    actions: ((actionsResult.data ?? []) as unknown[]).map((row) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const action = row as any;
+      return {
+        id: action.id,
+        action_type: action.action_type,
+        target_type: action.target_type,
+        target_id: action.target_id,
+        reason: action.reason,
+        created_at: action.created_at,
+        ...(profileFromJoined(action.moderator)
+          ? { moderator: toAuthor(profileFromJoined(action.moderator)) }
+          : {}),
+        ...(profileFromJoined(action.target)
+          ? { target: toAuthor(profileFromJoined(action.target)) }
+          : {}),
+      };
+    }),
+  };
+}
+
+export async function setModerationRole(
+  profileId: string,
+  role: "admin" | "moderator" | "none",
+  permissions: AdminPermission[],
+  reason: string,
+) {
+  if (localProfileIsAdmin()) return;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any).rpc("set_moderation_role", {
+    target_profile_id: profileId,
+    target_role: role,
+    target_permissions: permissions,
+    reason,
+  });
+  if (error) throw error;
+}
+
+export async function moderateAdminPost(
+  postId: string,
+  action: "hide" | "remove" | "restore",
+  reason: string,
+) {
+  if (localProfileIsAdmin()) return;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any).rpc("moderate_post", {
+    target_post_id: postId,
+    action,
+    reason,
+  });
+  if (error) throw error;
+}
+
+export async function setUserRestriction(
+  profileId: string,
+  status: "active" | "suspended" | "banned",
+  reason: string,
+  expiresAt?: string | null,
+) {
+  if (localProfileIsAdmin()) return;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any).rpc("set_user_restriction", {
+    target_profile_id: profileId,
+    target_status: status,
+    reason,
+    expires_at: expiresAt ?? null,
+  });
+  if (error) throw error;
+}
+
+export async function resolveModerationReport(
+  reportId: string,
+  status: "actioned" | "dismissed",
+  note: string,
+) {
+  if (localProfileIsAdmin()) return;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any).rpc("resolve_moderation_report", {
+    target_report_id: reportId,
+    target_status: status,
+    moderator_note: note,
   });
   if (error) throw error;
 }

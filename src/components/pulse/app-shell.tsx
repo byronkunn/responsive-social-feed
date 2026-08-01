@@ -16,6 +16,7 @@ import {
   FileText,
   LogOut,
   LogIn,
+  ShieldCheck,
 } from "lucide-react";
 import { Avatar } from "./avatar";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ import { useProfile } from "@/hooks/use-session";
 import { currentUser, type Connection } from "@/lib/pulse-data";
 import {
   fetchExploreData,
+  fetchAdminAccess,
   fetchSuggestedProfiles,
   toggleFollowProfile,
   type ExploreTrend,
@@ -56,6 +58,8 @@ export function AppShell({ children, rail = true }: { children: React.ReactNode;
   const signedIn = Boolean(session || profile);
   const [railTrends, setRailTrends] = useState<ExploreTrend[]>([]);
   const [railSuggestions, setRailSuggestions] = useState<Connection[]>([]);
+  const [showAdmin, setShowAdmin] = useState(false);
+  const navLinks = showAdmin ? [...nav, { to: "/admin", label: "Admin", icon: ShieldCheck }] : nav;
 
   useEffect(() => {
     let active = true;
@@ -81,6 +85,25 @@ export function AppShell({ children, rail = true }: { children: React.ReactNode;
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    if (!signedIn) {
+      setShowAdmin(false);
+      return;
+    }
+    fetchAdminAccess()
+      .then((access) => {
+        if (!active) return;
+        setShowAdmin(access.role === "admin" || access.permissions.includes("view_admin"));
+      })
+      .catch(() => {
+        if (active) setShowAdmin(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [signedIn, profile?.id]);
+
   async function signOut() {
     await queryClient.cancelQueries();
     queryClient.clear();
@@ -101,7 +124,7 @@ export function AppShell({ children, rail = true }: { children: React.ReactNode;
             <Radio className="size-6 shrink-0 text-signal" />
             <span className="hidden xl:inline">Pulse</span>
           </Link>
-          {nav.map(({ to, label, icon: Icon }) => (
+          {navLinks.map(({ to, label, icon: Icon }) => (
             <Link
               key={to}
               to={to}
