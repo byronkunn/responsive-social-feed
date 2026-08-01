@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Avatar } from "./avatar";
 import { MediaGrid } from "./media-grid";
+import { ReportDialog } from "./report-dialog";
 import { cn } from "@/lib/utils";
 import { gallery } from "@/lib/pulse-data";
 import type { Post } from "@/lib/pulse-data";
@@ -106,16 +107,26 @@ export function PostCard({ post, onDelete }: { post: Post; onDelete?: (id: strin
                 · {post.time}
               </Link>
             </div>
-            {isOwner && (
-              <button
-                type="button"
-                onClick={handleDelete}
-                aria-label="Delete pulse"
-                className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-destructive"
-              >
-                <Trash2 className="size-3.5" />
-              </button>
-            )}
+            <div className="flex shrink-0 items-center gap-1">
+              {!isOwner && (
+                <ReportDialog
+                  targetType="post"
+                  targetId={post.id}
+                  targetLabel="post"
+                  triggerClassName="px-2 py-1"
+                />
+              )}
+              {isOwner && (
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  aria-label="Delete pulse"
+                  className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-destructive"
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              )}
+            </div>
           </header>
 
           {(() => {

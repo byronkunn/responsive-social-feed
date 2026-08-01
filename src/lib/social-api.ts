@@ -215,6 +215,7 @@ const POST_BODY_LIMIT = 280;
 const REPLY_BODY_LIMIT = 280;
 const MAX_MEDIA_ATTACHMENTS = 20;
 const LOCAL_DRAFTS_KEY = "pulse.local-drafts";
+const LOCAL_REPORTS_KEY = "pulse.local-reports";
 const ADMIN_PERMISSIONS: AdminPermission[] = [
   "view_admin",
   "moderate_content",
@@ -302,6 +303,16 @@ type LocalDraft = {
   updated_at: string;
 };
 
+type LocalReport = {
+  id: string;
+  target_type: "post" | "reply" | "profile" | "message";
+  target_id: string;
+  reason: string;
+  status: "pending" | "actioned" | "dismissed";
+  created_at: string;
+  reporter: Author;
+};
+
 function readLocalDrafts(): LocalDraft[] {
   if (typeof window === "undefined") return [];
   try {
@@ -316,6 +327,22 @@ function readLocalDrafts(): LocalDraft[] {
 function writeLocalDrafts(drafts: LocalDraft[]) {
   if (typeof window === "undefined") return;
   localStorage.setItem(LOCAL_DRAFTS_KEY, JSON.stringify(drafts));
+}
+
+function readLocalReports(): LocalReport[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(LOCAL_REPORTS_KEY);
+    return raw ? (JSON.parse(raw) as LocalReport[]) : [];
+  } catch {
+    localStorage.removeItem(LOCAL_REPORTS_KEY);
+    return [];
+  }
+}
+
+function writeLocalReports(reports: LocalReport[]) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(LOCAL_REPORTS_KEY, JSON.stringify(reports));
 }
 
 function emptyAdminAnalytics(): AdminAnalytics {
@@ -380,7 +407,15 @@ function localAdminDashboard(): AdminDashboard {
       })),
     },
     users: [user],
-    reports: [],
+    reports: readLocalReports().map((report) => ({
+      id: report.id,
+      target_type: report.target_type,
+      target_id: report.target_id,
+      reason: report.reason,
+      status: report.status,
+      created_at: report.created_at,
+      reporter: report.reporter,
+    })),
     posts: [],
     actions: [],
   };
@@ -1591,6 +1626,49 @@ export async function resolveModerationReport(
     target_report_id: reportId,
     target_status: status,
     moderator_note: note,
+  });
+  if (error) throw error;
+}
+
+export async function submitModerationReport(
+  targetType: "post" | "reply" | "profile" | "message",
+  targetId: string,
+  reason: string,
+) {
+  const trimmedReason = reason.trim();
+  if (trimmedReason.length < 3) {
+    throw new Error("Add a short reason for the report");
+  }
+  if (trimmedReason.length > 500) {
+    throw new Error("Use 500 characters or fewer");
+  }
+
+  const localProfile = localProfileFromStorage();
+  if (localProfile && isLocalProfileId(localProfile.id)) {
+    writeLocalReports([
+      {
+        id: `local-report-${Date.now()}`,
+        target_type: targetType,
+        target_id: targetId,
+        reason: trimmedReason,
+        status: "pending",
+        created_at: new Date().toISOString(),
+        reporter: {
+          name: localProfile.display_name,
+          handle: localProfile.handle,
+          initials: localProfile.initials,
+        },
+      },
+      ...readLocalReports(),
+    ]);
+    return;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any).rpc("submit_moderation_report", {
+    target_type: targetType,
+    target_id: targetId,
+    reason: trimmedReason,
   });
   if (error) throw error;
 }

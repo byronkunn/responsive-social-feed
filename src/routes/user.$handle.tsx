@@ -4,12 +4,14 @@ import { ArrowLeft, BadgeCheck } from "lucide-react";
 import { AppShell } from "@/components/pulse/app-shell";
 import { Avatar } from "@/components/pulse/avatar";
 import { PostCard } from "@/components/pulse/post-card";
+import { ReportDialog } from "@/components/pulse/report-dialog";
 import { Button } from "@/components/ui/button";
 import { type Author, type Post } from "@/lib/pulse-data";
 import { fetchPostsByHandle, fetchProfileByHandle, toggleFollowProfile } from "@/lib/social-api";
 import { toast } from "sonner";
 
 type PublicProfile = Author & {
+  id: string;
   bio: string;
 };
 
@@ -23,6 +25,7 @@ export const Route = createFileRoute("/user/$handle")({
         const posts = await fetchPostsByHandle(profile.handle);
         return {
           profile: {
+            id: profile.id,
             name: profile.display_name,
             handle: profile.handle,
             initials: profile.initials,
@@ -111,13 +114,20 @@ function UserProfile() {
             initials={profile.initials}
             className="-mt-10 size-20 rounded-3xl text-xl ring-4 ring-background sm:-mt-12 sm:size-24"
           />
-          <Button
-            variant={following ? "default" : "secondary"}
-            onClick={() => void toggleFollow()}
-            className="mb-1 shrink-0 rounded-full font-display font-bold"
-          >
-            {following ? "Following" : "Follow"}
-          </Button>
+          <div className="mb-1 flex shrink-0 items-center gap-2">
+            <ReportDialog
+              targetType="profile"
+              targetId={profile.id}
+              targetLabel={`@${profile.handle}`}
+            />
+            <Button
+              variant={following ? "default" : "secondary"}
+              onClick={() => void toggleFollow()}
+              className="rounded-full font-display font-bold"
+            >
+              {following ? "Following" : "Follow"}
+            </Button>
+          </div>
         </div>
         <div className="mt-3 flex min-w-0 items-center gap-1.5">
           <h1 className="truncate font-display text-xl font-black">{profile.name}</h1>
