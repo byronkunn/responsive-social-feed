@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { BadgeCheck, PenSquare, Search } from "lucide-react";
 import { Avatar } from "@/components/pulse/avatar";
 import { conversations, type Conversation } from "@/lib/pulse-data";
+import { fetchConversations } from "@/lib/social-api";
 import { cn } from "@/lib/utils";
 
 const filters = ["All", "Unread"] as const;
@@ -15,16 +16,42 @@ export function isOnline(c: Conversation) {
 export function ConversationList({
   activeId,
   compact = false,
+  items,
 }: {
   activeId?: string;
   compact?: boolean;
+  items?: Conversation[];
 }) {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<Filter>("All");
+  const [loaded, setLoaded] = useState<Conversation[] | null>(items ?? null);
+  const source = useMemo(() => loaded ?? (import.meta.env.DEV ? conversations : []), [loaded]);
+
+  useEffect(() => {
+    if (items) {
+      setLoaded(items);
+      return;
+    }
+
+    let active = true;
+    fetchConversations()
+      .then((fetched) => {
+        if (!active) return;
+        setLoaded(fetched.length > 0 ? fetched : import.meta.env.DEV ? conversations : []);
+      })
+      .catch(() => {
+        if (!active) return;
+        setLoaded(import.meta.env.DEV ? conversations : []);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [items]);
 
   const results = useMemo(() => {
     const term = q.trim().toLowerCase();
-    return conversations.filter((c) => {
+    return source.filter((c) => {
       if (filter === "Unread" && !c.unread) return false;
       if (!term) return true;
       return (
@@ -33,7 +60,7 @@ export function ConversationList({
         c.preview.toLowerCase().includes(term)
       );
     });
-  }, [q, filter]);
+  }, [q, filter, source]);
 
   return (
     <div className="flex min-w-0 flex-col">

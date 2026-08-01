@@ -1,5 +1,15 @@
 import { supabase } from "@/integrations/supabase/client";
-import { postById, type Author, type Draft, type Post } from "@/lib/pulse-data";
+import {
+  conversations as seedConversations,
+  postById,
+  type Author,
+  type ChatAttachment,
+  type ChatMessage,
+  type Conversation,
+  type Draft,
+  type Post,
+  type Reply,
+} from "@/lib/pulse-data";
 
 type PersistedPost = {
   id: string;
@@ -20,6 +30,44 @@ type PersistedProfile = {
   handle: string;
   initials: string;
   bio: string | null;
+};
+
+type PersistedConversation = {
+  id: string;
+  creator_id: string;
+  created_at: string;
+  updated_at: string;
+  conversation_participants?: {
+    user_id: string;
+    profiles: PersistedProfile | null;
+  }[];
+  messages?: {
+    id: string;
+    body: string;
+    sender_id: string;
+    attachments: ChatAttachment[] | null;
+    deleted_for_everyone_at: string | null;
+    created_at: string;
+  }[];
+};
+
+type PersistedMessage = {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  body: string;
+  attachments: ChatAttachment[] | null;
+  deleted_for_everyone_at: string | null;
+  created_at: string;
+};
+
+export type PulseNotification = {
+  id: string;
+  kind: "spark" | "echo" | "follow" | "mention" | "reply" | "message" | "system";
+  text: string;
+  time: string;
+  href?: string;
+  read: boolean;
 };
 
 const POST_BODY_LIMIT = 280;
@@ -50,6 +98,10 @@ async function currentUserId() {
   return data.user.id;
 }
 
+function isLocalProfileId(id?: string | null) {
+  return !!id && id.startsWith("local-");
+}
+
 function normalizeTextBody(body: string, limit: number) {
   const trimmed = body.trim();
   if (trimmed.length > limit) {
@@ -64,6 +116,15 @@ function normalizeMediaUrls(imageUrls?: string[]) {
     throw new Error(`Attach up to ${MAX_MEDIA_ATTACHMENTS} images per post`);
   }
   return cleaned;
+}
+
+function normalizeAttachmentUrls(attachments?: ChatAttachment[]) {
+  return (attachments ?? []).map((attachment) => ({
+    id: attachment.id,
+    type: attachment.type,
+    url: attachment.url,
+    ...(attachment.label ? { label: attachment.label } : {}),
+  }));
 }
 
 function isVideoUrl(url: string) {
@@ -125,16 +186,39 @@ export async function fetchPosts(): Promise<Post[]> {
 }
 
 export async function uploadMedia(file: File): Promise<string> {
+  const allowedTypes = [
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+    "video/mp4",
+    "video/webm",
+    "video/ogg",
+  ];
+  const maxBytes = 50 * 1024 * 1024;
+
+  if (!allowedTypes.includes(file.type)) {
+    throw new Error("Upload an image or browser-playable video file");
+  }
+  if (file.size > maxBytes) {
+    throw new Error("Media uploads must be 50 MB or smaller");
+  }
+
   try {
+    const userId = await currentUserId();
     const fileExt = file.name.split(".").pop();
-    const filePath = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+    const filePath = `${userId}/${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
     const { data, error } = await supabase.storage.from("pulse-media").upload(filePath, file);
     if (!error && data) {
       const { data: publicUrlData } = supabase.storage.from("pulse-media").getPublicUrl(data.path);
       if (publicUrlData?.publicUrl) return publicUrlData.publicUrl;
     }
-  } catch {
-    // Fallback to Data URL
+    if (error) throw error;
+  } catch (error) {
+    if (!import.meta.env.DEV) {
+      throw error instanceof Error ? error : new Error("Upload failed");
+    }
+    // Local prototype fallback when Supabase Storage is not configured.
   }
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -242,7 +326,8 @@ export async function fetchPostById(id: string): Promise<Post | null> {
     return postById(id) ?? null;
   }
 
-  const { data, error } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any)
     .from("posts")
     .select(
       "id, body, created_at, author_id, media_urls, profiles!posts_author_id_fkey(display_name, handle, initials)",
@@ -300,8 +385,33 @@ export async function fetchBookmarkedPosts(): Promise<Post[]> {
   return rows.map((post) => toPost(post));
 }
 
+export async function fetchReactedPosts(kind: "spark" | "echo" | "bookmark"): Promise<Post[]> {
+  const userId = await currentUserId();
+  const { data: reactions, error: rErr } = await supabase
+    .from("post_reactions")
+    .select("post_id")
+    .eq("user_id", userId)
+    .eq("kind", kind);
+  if (rErr) throw rErr;
+  if (!reactions || reactions.length === 0) return [];
+
+  const postIds = reactions.map((r) => r.post_id);
+  const { data: postsData, error: pErr } = await supabase
+    .from("posts")
+    .select(
+      "id, body, created_at, author_id, media_urls, profiles!posts_author_id_fkey(display_name, handle, initials)",
+    )
+    .in("id", postIds)
+    .order("created_at", { ascending: false });
+  if (pErr) throw pErr;
+
+  const rows = (postsData ?? []) as unknown as PersistedPost[];
+  return rows.map((post) => toPost(post));
+}
+
 export async function fetchUserPosts(userId: string): Promise<Post[]> {
-  const { data, error } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any)
     .from("posts")
     .select(
       "id, body, created_at, author_id, media_urls, profiles!posts_author_id_fkey(display_name, handle, initials)",
@@ -323,6 +433,21 @@ export async function fetchProfileByHandle(handle: string): Promise<PersistedPro
 
   if (error) throw error;
   return data as PersistedProfile | null;
+}
+
+export async function searchProfiles(query: string): Promise<Author[]> {
+  const term = query.trim();
+  const request = supabase
+    .from("profiles")
+    .select("id, display_name, handle, initials, bio")
+    .order("display_name", { ascending: true })
+    .limit(12);
+  const { data, error } = term
+    ? await request.or(`display_name.ilike.%${term}%,handle.ilike.%${term}%`)
+    : await request;
+
+  if (error) throw error;
+  return ((data ?? []) as PersistedProfile[]).map(toAuthor);
 }
 
 export async function fetchPostsByHandle(handle: string): Promise<Post[]> {
@@ -356,6 +481,28 @@ export async function fetchReplies(postId: string) {
   }));
 }
 
+export async function fetchUserReplies(userId: string): Promise<Reply[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any)
+    .from("replies")
+    .select(
+      "id, post_id, body, created_at, author_id, profiles!replies_author_id_fkey(display_name, handle, initials)",
+    )
+    .eq("author_id", userId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    postId: row.post_id,
+    author: toAuthor(row.profiles),
+    time: age(row.created_at),
+    body: row.body,
+    sparks: 0,
+  }));
+}
+
 export async function createReply(postId: string, body: string) {
   const authorId = await currentUserId();
   const trimmedBody = normalizeTextBody(body, REPLY_BODY_LIMIT);
@@ -368,6 +515,211 @@ export async function createReply(postId: string, body: string) {
     author_id: authorId,
     body: trimmedBody,
   });
+  if (error) throw error;
+}
+
+function toChatMessage(row: PersistedMessage, myUserId: string): ChatMessage {
+  return {
+    id: row.id,
+    from: row.sender_id === myUserId ? "me" : "them",
+    body: row.deleted_for_everyone_at ? "" : row.body,
+    time: age(row.created_at),
+    attachments: row.deleted_for_everyone_at ? [] : normalizeAttachmentUrls(row.attachments ?? []),
+    ...(row.deleted_for_everyone_at ? { deletedForBoth: true } : {}),
+  };
+}
+
+function toConversation(row: PersistedConversation, myUserId: string): Conversation {
+  const otherParticipant =
+    row.conversation_participants?.find((participant) => participant.user_id !== myUserId) ??
+    row.conversation_participants?.[0];
+  const person = toAuthor(otherParticipant?.profiles ?? null);
+  const latest = row.messages?.[0];
+  const latestMessage = latest ? toChatMessage(latest as PersistedMessage, myUserId) : null;
+
+  return {
+    id: row.id,
+    person,
+    preview:
+      latestMessage?.body ||
+      latestMessage?.attachments?.[0]?.label ||
+      "Start a private conversation...",
+    time: latest ? age(latest.created_at) : age(row.updated_at),
+    messages: latestMessage ? [latestMessage] : [],
+  };
+}
+
+export async function fetchConversations(): Promise<Conversation[]> {
+  const userId = await currentUserId();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any)
+    .from("conversations")
+    .select(
+      "id, creator_id, created_at, updated_at, conversation_participants(user_id, profiles!conversation_participants_user_id_fkey(id, display_name, handle, initials, bio)), messages(id, body, sender_id, attachments, deleted_for_everyone_at, created_at)",
+    )
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+
+  return ((data ?? []) as unknown as PersistedConversation[]).map((row) =>
+    toConversation(row, userId),
+  );
+}
+
+export async function fetchConversation(conversationId: string): Promise<Conversation | null> {
+  const userId = await currentUserId();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any)
+    .from("conversations")
+    .select(
+      "id, creator_id, created_at, updated_at, conversation_participants(user_id, profiles!conversation_participants_user_id_fkey(id, display_name, handle, initials, bio)), messages(id, conversation_id, body, sender_id, attachments, deleted_for_everyone_at, created_at)",
+    )
+    .eq("id", conversationId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+
+  const row = data as unknown as PersistedConversation;
+  const conversation = toConversation(row, userId);
+  conversation.messages = ((row.messages ?? []) as unknown as PersistedMessage[])
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    .map((message) => toChatMessage(message, userId));
+  return conversation;
+}
+
+export async function createConversationWith(handle: string): Promise<Conversation> {
+  const userId = await currentUserId();
+  const profile = await fetchProfileByHandle(handle);
+  if (!profile) throw new Error("User not found");
+  if (profile.id === userId) throw new Error("Choose another user to message");
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: conversation, error } = await (supabase as any)
+    .from("conversations")
+    .insert({ creator_id: userId })
+    .select("id, creator_id, created_at, updated_at")
+    .single();
+  if (error) throw error;
+
+  const conversationId = conversation.id;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error: participantError } = await (supabase as any)
+    .from("conversation_participants")
+    .insert([
+      { conversation_id: conversationId, user_id: userId },
+      { conversation_id: conversationId, user_id: profile.id },
+    ]);
+  if (participantError) throw participantError;
+
+  return {
+    id: conversationId,
+    person: toAuthor(profile),
+    preview: "Start a private conversation...",
+    time: "now",
+    messages: [],
+  };
+}
+
+export async function sendMessage(
+  conversationId: string,
+  body: string,
+  attachments?: ChatAttachment[],
+): Promise<ChatMessage> {
+  const userId = await currentUserId();
+  const trimmed = body.trim();
+  const cleanedAttachments = normalizeAttachmentUrls(attachments);
+  if (!trimmed && cleanedAttachments.length === 0) {
+    throw new Error("Write a message or attach media");
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any)
+    .from("messages")
+    .insert({
+      conversation_id: conversationId,
+      sender_id: userId,
+      body: trimmed,
+      attachments: cleanedAttachments,
+    })
+    .select(
+      "id, conversation_id, body, sender_id, attachments, deleted_for_everyone_at, created_at",
+    )
+    .single();
+  if (error) throw error;
+
+  return toChatMessage(data as unknown as PersistedMessage, userId);
+}
+
+export async function deleteMessageForMe(messageId: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any).rpc("delete_message_for_me", {
+    target_message_id: messageId,
+  });
+  if (error) throw error;
+}
+
+export async function deleteMessageForBoth(messageId: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any).rpc("delete_message_for_everyone", {
+    target_message_id: messageId,
+  });
+  if (error) throw error;
+}
+
+export async function deleteMessageAttachmentForBoth(messageId: string, attachmentId: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any).rpc("delete_message_attachment_for_everyone", {
+    target_message_id: messageId,
+    target_attachment_id: attachmentId,
+  });
+  if (error) throw error;
+}
+
+export async function fetchNotifications(): Promise<PulseNotification[]> {
+  const userId = await currentUserId();
+  if (isLocalProfileId(userId)) return [];
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any)
+    .from("notifications")
+    .select(
+      "id, kind, post_id, read_at, created_at, actor:profiles!notifications_actor_id_fkey(display_name, handle)",
+    )
+    .eq("recipient_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (error) throw error;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return ((data ?? []) as any[]).map((notification) => {
+    const actor = notification.actor?.display_name ?? notification.actor?.handle ?? "Someone";
+    const kind = notification.kind as PulseNotification["kind"];
+    const postHref = notification.post_id ? `/post/${notification.post_id}` : undefined;
+    const textByKind: Record<PulseNotification["kind"], string> = {
+      spark: `${actor} sparked your pulse.`,
+      echo: `${actor} echoed your pulse.`,
+      follow: `${actor} started following you.`,
+      mention: `${actor} mentioned you.`,
+      reply: `${actor} replied to your pulse.`,
+      message: `${actor} sent you a message.`,
+      system: "Pulse has an update for you.",
+    };
+    return {
+      id: String(notification.id),
+      kind,
+      text: textByKind[kind] ?? "You have a new notification.",
+      time: age(notification.created_at),
+      ...(kind === "message" ? { href: "/messages" } : postHref ? { href: postHref } : {}),
+      read: !!notification.read_at,
+    };
+  });
+}
+
+export async function markNotificationRead(id: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any)
+    .from("notifications")
+    .update({ read_at: new Date().toISOString() })
+    .eq("id", id);
   if (error) throw error;
 }
 

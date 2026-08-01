@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AppShell, TopBar } from "@/components/pulse/app-shell";
 import { Composer } from "@/components/pulse/composer";
 import { PostCard } from "@/components/pulse/post-card";
+import { useProfile } from "@/hooks/use-session";
 import { posts as seedPosts, currentUser, type Post } from "@/lib/pulse-data";
 import { createPost, fetchPosts } from "@/lib/social-api";
 import { toast } from "sonner";
@@ -29,6 +30,7 @@ export const Route = createFileRoute("/")({
 function Home() {
   const [tab, setTab] = useState<"forYou" | "following">("forYou");
   const [posts, setPosts] = useState<Post[]>(seedPosts);
+  const { profile } = useProfile();
 
   useEffect(() => {
     fetchPosts()
@@ -72,6 +74,29 @@ function Home() {
             const persisted = await fetchPosts();
             setPosts(persisted.length > 0 ? [...persisted, ...seedPosts] : seedPosts);
           } catch (error) {
+            if (import.meta.env.DEV && profile?.id.startsWith("local-")) {
+              const author = {
+                name: profile.display_name,
+                handle: profile.handle,
+                initials: profile.initials,
+              };
+              const media = imageUrls ?? [];
+              const localPost: Post = {
+                id: `local-post-${Date.now()}`,
+                author,
+                time: "now",
+                body,
+                replies: 0,
+                echoes: 0,
+                sparks: 0,
+                views: "1",
+                imageUrls: media.filter((url) => !/\.(mp4|webm|ogg)(\?|#|$)/i.test(url)),
+                videoUrls: media.filter((url) => /\.(mp4|webm|ogg)(\?|#|$)/i.test(url)),
+              };
+              setPosts((current) => [localPost, ...current]);
+              toast.success("Pulse published locally");
+              return;
+            }
             toast.error(error instanceof Error ? error.message : "The post could not be published");
           }
         }}

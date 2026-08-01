@@ -7,9 +7,20 @@ import { Button } from "@/components/ui/button";
 import { PostCard } from "@/components/pulse/post-card";
 import { useHideLikes } from "@/hooks/use-preferences";
 import { useProfile } from "@/hooks/use-session";
-import { currentUser, gallery, posts, replies, type Post } from "@/lib/pulse-data";
+import {
+  currentUser,
+  posts,
+  replies as seedReplies,
+  type Post,
+  type Reply,
+} from "@/lib/pulse-data";
 import { requireClientSession } from "@/lib/require-auth";
-import { fetchUserPosts } from "@/lib/social-api";
+import {
+  fetchBookmarkedPosts,
+  fetchReactedPosts,
+  fetchUserPosts,
+  fetchUserReplies,
+} from "@/lib/social-api";
 
 export const Route = createFileRoute("/profile/")({
   beforeLoad: requireClientSession,
@@ -38,6 +49,9 @@ function Profile() {
   const { hideLikes } = useHideLikes();
   const { profile } = useProfile();
   const [userPosts, setUserPosts] = useState<Post[]>([]);
+  const [userReplies, setUserReplies] = useState<Reply[]>([]);
+  const [echoed, setEchoed] = useState<Post[]>([]);
+  const [liked, setLiked] = useState<Post[]>([]);
 
   const name = profile?.display_name ?? currentUser.name;
   const handle = profile?.handle ?? currentUser.handle;
@@ -48,18 +62,39 @@ function Profile() {
 
   useEffect(() => {
     if (profile?.id) {
+      if (profile.id.startsWith("local-")) {
+        setUserPosts(posts.filter((post) => post.author.handle === "adarowe"));
+        setUserReplies(seedReplies.slice(0, 5));
+        setEchoed(posts.filter((_, index) => index % 5 === 0));
+        setLiked(posts.filter((_, index) => index % 4 === 0));
+        return;
+      }
+
       fetchUserPosts(profile.id)
         .then((fetched) => {
           setUserPosts(fetched);
         })
         .catch(() => undefined);
+      fetchUserReplies(profile.id)
+        .then(setUserReplies)
+        .catch(() => undefined);
+      fetchReactedPosts("echo")
+        .then(setEchoed)
+        .catch(() => undefined);
+      fetchBookmarkedPosts()
+        .then(setLiked)
+        .catch(() => undefined);
     }
   }, [profile?.id]);
 
   const own = userPosts;
-  const media: Post[] = [];
-  const echoed: Post[] = [];
-  const liked: Post[] = [];
+  const media = own.filter(
+    (post) =>
+      post.imageUrl ||
+      post.videoUrl ||
+      (post.imageUrls && post.imageUrls.length > 0) ||
+      (post.videoUrls && post.videoUrls.length > 0),
+  );
 
   return (
     <AppShell>
@@ -144,8 +179,8 @@ function Profile() {
         ))}
 
       {tab === "Replies" &&
-        (replies.length ? (
-          replies.slice(0, 5).map((r) => (
+        (userReplies.length ? (
+          userReplies.slice(0, 25).map((r) => (
             <article key={r.id} className="border-b border-border px-4 py-4 sm:px-6">
               <p className="text-xs text-muted-foreground">
                 Replying to{" "}

@@ -30,15 +30,35 @@ import {
   type ChatMessage,
   type Conversation,
 } from "@/lib/pulse-data";
+import { requireClientSession } from "@/lib/require-auth";
+import {
+  createConversationWith,
+  deleteMessageAttachmentForBoth,
+  deleteMessageForBoth,
+  deleteMessageForMe,
+  fetchConversation,
+  searchProfiles,
+  sendMessage,
+  uploadMultipleMedia,
+} from "@/lib/social-api";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 type MediaFilter = "all" | "images" | "videos" | "urls";
-type PendingAttachment = ChatAttachment & { objectUrl?: string };
+type PendingAttachment = ChatAttachment & { file?: File; objectUrl?: string };
 type LightboxMedia = ChatAttachment & { messageId?: string };
 
 export const Route = createFileRoute("/messages/$conversationId")({
-  loader: ({ params }) => {
-    const existing = conversationById(params.conversationId);
+  beforeLoad: requireClientSession,
+  loader: async ({ params }) => {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{12}$/i.test(
+      params.conversationId,
+    );
+    const fetched = isUuid
+      ? await fetchConversation(params.conversationId).catch(() => null)
+      : null;
+    const existing =
+      fetched ?? (import.meta.env.DEV ? conversationById(params.conversationId) : null);
     const conversation = existing ?? {
       id: params.conversationId,
       person: {
@@ -100,6 +120,8 @@ function Thread({ initialConversation }: { initialConversation: Conversation }) 
   const endRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const realConversation =
+    /^[0-9a-f]{8}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{12}$/i.test(conversation.id);
 
   const isNewChat = initialConversation.id === "new" && messages.length === 0;
   const visibleMessages = messages.filter((message) => !message.deletedForMe);
@@ -133,17 +155,30 @@ function Thread({ initialConversation }: { initialConversation: Conversation }) 
     inputRef.current?.focus();
   }, [conversation.id]);
 
-  function startChat(person: Author) {
-    setConversation({
-      id: `local-${person.handle}`,
-      person,
-      preview: "Start a private conversation...",
-      time: "now",
-      messages: [],
-    });
-    setMessages([]);
-    setChatDeleted(null);
-    window.setTimeout(() => inputRef.current?.focus(), 50);
+  async function startChat(person: Author) {
+    try {
+      const next = await createConversationWith(person.handle);
+      setConversation(next);
+      setMessages([]);
+      setChatDeleted(null);
+      window.history.replaceState({}, "", `/messages/${next.id}`);
+      window.setTimeout(() => inputRef.current?.focus(), 50);
+    } catch (error) {
+      if (!import.meta.env.DEV) {
+        toast.error(error instanceof Error ? error.message : "Could not start chat");
+        return;
+      }
+      setConversation({
+        id: `local-${person.handle}`,
+        person,
+        preview: "Start a private conversation...",
+        time: "now",
+        messages: [],
+      });
+      setMessages([]);
+      setChatDeleted(null);
+      window.setTimeout(() => inputRef.current?.focus(), 50);
+    }
   }
 
   function handleFiles(files: FileList | null) {
@@ -158,6 +193,7 @@ function Thread({ initialConversation }: { initialConversation: Conversation }) 
           type: file.type.startsWith("video/") ? ("video" as const) : ("image" as const),
           url,
           objectUrl: url,
+          file,
           label: file.name,
         };
       }),
@@ -173,7 +209,7 @@ function Thread({ initialConversation }: { initialConversation: Conversation }) 
     });
   }
 
-  function send() {
+  async function send() {
     const body = value.trim();
     const urls = Array.from(body.matchAll(/https?:\/\/\S+/g)).map((match, index) => ({
       id: `url-${Date.now()}-${index}`,
@@ -183,23 +219,58 @@ function Thread({ initialConversation }: { initialConversation: Conversation }) 
     }));
     if (!body && pending.length === 0) return;
 
-    const attachments = [...pending.map(({ objectUrl: _objectUrl, ...item }) => item), ...urls];
-    const message: ChatMessage = {
-      id: `local-${Date.now()}`,
-      from: "me",
-      body,
-      time: "now",
-      ...(attachments.length > 0 ? { attachments } : {}),
-    };
-    setMessages((prev) => [...prev, message]);
-    setValue("");
-    setPending([]);
-    setTyping(true);
-    window.setTimeout(() => setTyping(false), 1200);
-    inputRef.current?.focus();
+    try {
+      const uploaded = pending.length
+        ? await uploadMultipleMedia(
+            pending.map((attachment) => {
+              const file = (attachment as PendingAttachment & { file?: File }).file;
+              if (!file) throw new Error("Attachment file is unavailable");
+              return file;
+            }),
+          )
+        : [];
+      const mediaAttachments = pending.map((item, index) => ({
+        id: `media-${Date.now()}-${index}`,
+        type: item.type,
+        url: uploaded[index] ?? item.url,
+        ...(item.label ? { label: item.label } : {}),
+      }));
+      const attachments = [...mediaAttachments, ...urls];
+      const message =
+        realConversation && !conversation.id.startsWith("local-")
+          ? await sendMessage(conversation.id, body, attachments)
+          : ({
+              id: `local-${Date.now()}`,
+              from: "me",
+              body,
+              time: "now",
+              ...(attachments.length > 0 ? { attachments } : {}),
+            } satisfies ChatMessage);
+      setMessages((prev) => [...prev, message]);
+      setValue("");
+      pending.forEach((item) => item.objectUrl && URL.revokeObjectURL(item.objectUrl));
+      setPending([]);
+      setTyping(true);
+      window.setTimeout(() => setTyping(false), 1200);
+      inputRef.current?.focus();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Message could not be sent");
+    }
   }
 
-  function deleteMessage(id: string, scope: "me" | "both") {
+  async function deleteMessage(id: string, scope: "me" | "both") {
+    const isPersisted = /^[0-9a-f]{8}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{12}$/i.test(
+      id,
+    );
+    if (isPersisted) {
+      try {
+        if (scope === "me") await deleteMessageForMe(id);
+        else await deleteMessageForBoth(id);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Message could not be deleted");
+        return;
+      }
+    }
     setMessages((prev) =>
       prev.map((message) =>
         message.id === id
@@ -215,7 +286,18 @@ function Thread({ initialConversation }: { initialConversation: Conversation }) 
     );
   }
 
-  function deleteAttachment(messageId: string, attachmentId: string, scope: "me" | "both") {
+  async function deleteAttachment(messageId: string, attachmentId: string, scope: "me" | "both") {
+    const isPersisted = /^[0-9a-f]{8}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{12}$/i.test(
+      messageId,
+    );
+    if (isPersisted && scope === "both") {
+      try {
+        await deleteMessageAttachmentForBoth(messageId, attachmentId);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Attachment could not be deleted");
+        return;
+      }
+    }
     setMessages((prev) =>
       prev.map((message) =>
         message.id === messageId
@@ -410,7 +492,7 @@ function Thread({ initialConversation }: { initialConversation: Conversation }) 
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          send();
+          void send();
         }}
         className="sticky bottom-16 z-30 border-t border-border bg-background/95 px-3 py-3 backdrop-blur sm:px-4 md:bottom-0"
       >
@@ -472,7 +554,7 @@ function Thread({ initialConversation }: { initialConversation: Conversation }) 
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                send();
+                void send();
               }
             }}
             placeholder="Start a message"
@@ -505,7 +587,24 @@ function Thread({ initialConversation }: { initialConversation: Conversation }) 
 
 function UserLookup({ onSelect }: { onSelect: (person: Author) => void }) {
   const [query, setQuery] = useState("");
-  const results = messageContacts.filter((person) => {
+  const [profiles, setProfiles] = useState<Author[]>(import.meta.env.DEV ? messageContacts : []);
+  useEffect(() => {
+    let active = true;
+    searchProfiles(query)
+      .then((items) => {
+        if (!active) return;
+        setProfiles(items.length > 0 ? items : import.meta.env.DEV ? messageContacts : []);
+      })
+      .catch(() => {
+        if (!active) return;
+        setProfiles(import.meta.env.DEV ? messageContacts : []);
+      });
+    return () => {
+      active = false;
+    };
+  }, [query]);
+
+  const results = profiles.filter((person) => {
     const term = query.trim().toLowerCase();
     if (!term) return true;
     return person.name.toLowerCase().includes(term) || person.handle.toLowerCase().includes(term);
@@ -528,7 +627,7 @@ function UserLookup({ onSelect }: { onSelect: (person: Author) => void }) {
           <button
             key={person.handle}
             type="button"
-            onClick={() => onSelect(person)}
+            onClick={() => void onSelect(person)}
             className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-border p-3 text-left transition-colors hover:bg-surface"
           >
             <Avatar initials={person.initials} className="size-10" />

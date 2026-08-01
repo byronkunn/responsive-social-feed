@@ -1,9 +1,13 @@
+import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell, TopBar } from "@/components/pulse/app-shell";
 import { ConversationList, NewMessageButton } from "@/components/pulse/conversation-list";
-import { conversations } from "@/lib/pulse-data";
+import { conversations as seedConversations, type Conversation } from "@/lib/pulse-data";
+import { requireClientSession } from "@/lib/require-auth";
+import { fetchConversations } from "@/lib/social-api";
 
 export const Route = createFileRoute("/messages/")({
+  beforeLoad: requireClientSession,
   head: () => ({
     meta: [
       { title: "Messages — Pulse" },
@@ -24,7 +28,28 @@ export const Route = createFileRoute("/messages/")({
 });
 
 function Messages() {
+  const [conversations, setConversations] = useState<Conversation[]>(
+    import.meta.env.DEV ? seedConversations : [],
+  );
   const unread = conversations.reduce((n, c) => n + (c.unread ?? 0), 0);
+
+  useEffect(() => {
+    let active = true;
+    fetchConversations()
+      .then((fetched) => {
+        if (!active) return;
+        setConversations(
+          fetched.length > 0 ? fetched : import.meta.env.DEV ? seedConversations : [],
+        );
+      })
+      .catch(() => {
+        if (!active) return;
+        setConversations(import.meta.env.DEV ? seedConversations : []);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return (
     <AppShell rail={false}>
@@ -36,7 +61,7 @@ function Messages() {
             : `${conversations.length} conversations`
         }
       />
-      <ConversationList />
+      <ConversationList items={conversations} />
       <div className="hidden px-6 py-12 text-center lg:block">
         <p className="text-sm text-muted-foreground">
           Pick a conversation to open it beside your inbox.
