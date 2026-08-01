@@ -1666,9 +1666,9 @@ export async function submitModerationReport(
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (supabase as any).rpc("submit_moderation_report", {
-    target_type: targetType,
-    target_id: targetId,
-    reason: trimmedReason,
+    p_target_type: targetType,
+    p_target_id: targetId,
+    p_reason: trimmedReason,
   });
   if (error) throw error;
 }

@@ -24,6 +24,8 @@ Required project settings:
 - Database:
   - Run all migrations.
   - Keep RLS enabled on every public table.
+  - Keep `rate_limit_events` private; it is only used by security-definer
+    rate-limit checks.
   - If the Supabase project uses explicit Data API exposure, grant Data API
     access for the public tables used by the app while keeping RLS policies in
     place.
@@ -32,6 +34,78 @@ Required project settings:
   - Use a public bucket only if uploaded media should be public.
   - Enforce upload MIME/size limits in Storage policies before accepting
     untrusted production uploads.
+
+### First Admin
+
+Bootstrap the first admin before public launch. Use one of these approaches from
+the Supabase dashboard SQL editor with service-role/admin privileges:
+
+```sql
+insert into public.moderation_role_members (profile_id, role, permissions)
+values (
+  '<your-profile-uuid>',
+  'admin',
+  array[
+    'view_admin',
+    'moderate_content',
+    'manage_reports',
+    'manage_users',
+    'manage_roles',
+    'view_analytics'
+  ]::text[]
+)
+on conflict (profile_id) do update
+set role = excluded.role,
+    permissions = excluded.permissions,
+    updated_at = now();
+```
+
+Alternatively, set the user's Supabase Auth `app_metadata.role` to `admin`.
+Do not use `user_metadata` for authorization; users can edit it.
+
+### Rate Limits and Abuse Controls
+
+Database-enforced limits are in the latest migrations:
+
+- Posts: 30 per hour per user.
+- Replies: 60 per hour per user.
+- Messages: 120 per hour per user.
+- Reports: 10 per hour per user.
+- Media uploads: 80 per hour per user.
+- Duplicate pending reports by the same reporter for the same target are
+  coalesced instead of creating more queue items.
+
+Supabase Auth has its own platform-level rate limits. The app also has a
+client-side auth attempt limiter to reduce accidental or scripted retries from
+the UI, but the server-side Supabase Auth limits remain the authoritative layer.
+
+### Backups
+
+Before launch:
+
+- Use a paid Supabase plan for scheduled backups and point-in-time recovery.
+- Confirm the recovery point objective that matches the risk of losing posts,
+  messages, reports, and moderation audit logs.
+- Test a restore into a staging project before relying on backups.
+- Export a schema snapshot after every migration batch.
+- Keep migration files reviewed and committed before deploying app code that
+  depends on them.
+
+### Moderation Operations
+
+Public users can report posts and profiles. Admins should review `/admin` daily
+while the site has active users.
+
+Moderation actions that remove content, restrict users, or change elevated roles
+require typed confirmation in the admin UI. Moderation outcomes create system
+notifications for affected users and audit entries for admins.
+
+Policy pages included in the app:
+
+- `/terms`
+- `/privacy`
+- `/guidelines`
+- `/appeals`
 
 Auth behavior:
 
@@ -54,6 +128,8 @@ SUPABASE_URL
 SUPABASE_PUBLISHABLE_KEY
 VITE_SUPABASE_URL
 VITE_SUPABASE_PUBLISHABLE_KEY
+VITE_SENTRY_DSN
+VITE_SENTRY_TRACES_SAMPLE_RATE
 ```
 
 Only set `SUPABASE_SERVICE_ROLE_KEY` if a trusted server-only feature actually
@@ -82,6 +158,31 @@ Notes:
   `x-content-type-options`, `referrer-policy`, `x-frame-options`, and
   `permissions-policy`.
 
+## Monitoring and Logging
+
+Cloudflare:
+
+- Keep Workers Observability enabled in the generated Wrangler config.
+- Review Worker invocation errors after each deploy.
+- Add alerts for elevated 5xx responses, high request volume, and auth/upload
+  routes if available in your Cloudflare plan.
+
+Supabase:
+
+- Monitor Auth errors, Postgres API errors, Storage upload errors, and database
+  resource saturation from the Supabase dashboard.
+- Review RLS denial spikes after policy changes.
+- Run `npx supabase db lint --local --fail-on error` before deploys and use the
+  Supabase advisors against production before major launches.
+
+Sentry:
+
+- Set `VITE_SENTRY_DSN` to enable frontend error capture.
+- Set `VITE_SENTRY_TRACES_SAMPLE_RATE` conservatively, for example `0.05`.
+- Do not send service-role keys, auth tokens, or private message bodies to
+  Sentry.
+- Verify one test error in staging before enabling alerts for production.
+
 ## Release Gate
 
 Before promoting a deploy:
@@ -104,3 +205,9 @@ Then verify in browser:
   `/drafts`, and `/notifications` redirect when signed out and load when signed
   in.
 - Posting with image/video media writes to Supabase and reloads in the feed.
+- Reporting a post/profile creates one pending moderation queue item.
+- Re-reporting the same target as the same user does not create duplicate
+  pending reports.
+- A user beyond posting/messaging/upload limits gets a friendly failure.
+- Admin destructive actions require typed confirmation.
+- Sentry receives a staging test error when `VITE_SENTRY_DSN` is set.

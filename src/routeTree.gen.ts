@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as AppealsRouteImport } from './routes/appeals'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as BookmarksRouteImport } from './routes/bookmarks'
 import { Route as CommunitiesRouteImport } from './routes/communities'
@@ -18,10 +19,13 @@ import { Route as ComposeRouteImport } from './routes/compose'
 import { Route as DraftsRouteImport } from './routes/drafts'
 import { Route as ExploreRouteImport } from './routes/explore'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
+import { Route as GuidelinesRouteImport } from './routes/guidelines'
 import { Route as ListsRouteImport } from './routes/lists'
 import { Route as NotificationsRouteImport } from './routes/notifications'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SearchRouteImport } from './routes/search'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as MessagesIndexRouteImport } from './routes/messages.index'
 import { Route as MessagesConversationIdRouteImport } from './routes/messages.$conversationId'
 import { Route as PostPostIdRouteImport } from './routes/post.$postId'
@@ -42,6 +46,11 @@ const IndexRoute = IndexRouteImport.update({
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppealsRoute = AppealsRouteImport.update({
+  id: '/appeals',
+  path: '/appeals',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRoute = AuthRouteImport.update({
@@ -79,6 +88,11 @@ const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
   path: '/forgot-password',
   getParentRoute: () => rootRouteImport,
 } as any)
+const GuidelinesRoute = GuidelinesRouteImport.update({
+  id: '/guidelines',
+  path: '/guidelines',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ListsRoute = ListsRouteImport.update({
   id: '/lists',
   path: '/lists',
@@ -89,6 +103,11 @@ const NotificationsRoute = NotificationsRouteImport.update({
   path: '/notifications',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
@@ -97,6 +116,11 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
 const SearchRoute = SearchRouteImport.update({
   id: '/search',
   path: '/search',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MessagesIndexRoute = MessagesIndexRouteImport.update({
@@ -158,6 +182,7 @@ const UserHandleRoute = UserHandleRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/appeals': typeof AppealsRoute
   '/auth': typeof AuthRoute
   '/bookmarks': typeof BookmarksRoute
   '/communities': typeof CommunitiesRoute
@@ -165,10 +190,13 @@ export interface FileRoutesByFullPath {
   '/drafts': typeof DraftsRoute
   '/explore': typeof ExploreRoute
   '/forgot-password': typeof ForgotPasswordRoute
+  '/guidelines': typeof GuidelinesRoute
   '/lists': typeof ListsRoute
   '/notifications': typeof NotificationsRoute
+  '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
   '/search': typeof SearchRoute
+  '/terms': typeof TermsRoute
   '/messages/$conversationId': typeof MessagesConversationIdRoute
   '/post/$postId': typeof PostPostIdRoute
   '/profile/edit': typeof ProfileEditRoute
@@ -184,6 +212,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/appeals': typeof AppealsRoute
   '/auth': typeof AuthRoute
   '/bookmarks': typeof BookmarksRoute
   '/communities': typeof CommunitiesRoute
@@ -191,10 +220,13 @@ export interface FileRoutesByTo {
   '/drafts': typeof DraftsRoute
   '/explore': typeof ExploreRoute
   '/forgot-password': typeof ForgotPasswordRoute
+  '/guidelines': typeof GuidelinesRoute
   '/lists': typeof ListsRoute
   '/notifications': typeof NotificationsRoute
+  '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
   '/search': typeof SearchRoute
+  '/terms': typeof TermsRoute
   '/messages/$conversationId': typeof MessagesConversationIdRoute
   '/post/$postId': typeof PostPostIdRoute
   '/profile/edit': typeof ProfileEditRoute
@@ -211,6 +243,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/appeals': typeof AppealsRoute
   '/auth': typeof AuthRoute
   '/bookmarks': typeof BookmarksRoute
   '/communities': typeof CommunitiesRoute
@@ -218,10 +251,13 @@ export interface FileRoutesById {
   '/drafts': typeof DraftsRoute
   '/explore': typeof ExploreRoute
   '/forgot-password': typeof ForgotPasswordRoute
+  '/guidelines': typeof GuidelinesRoute
   '/lists': typeof ListsRoute
   '/notifications': typeof NotificationsRoute
+  '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
   '/search': typeof SearchRoute
+  '/terms': typeof TermsRoute
   '/messages/$conversationId': typeof MessagesConversationIdRoute
   '/post/$postId': typeof PostPostIdRoute
   '/profile/edit': typeof ProfileEditRoute
@@ -239,6 +275,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/admin'
+    | '/appeals'
     | '/auth'
     | '/bookmarks'
     | '/communities'
@@ -246,10 +283,13 @@ export interface FileRouteTypes {
     | '/drafts'
     | '/explore'
     | '/forgot-password'
+    | '/guidelines'
     | '/lists'
     | '/notifications'
+    | '/privacy'
     | '/reset-password'
     | '/search'
+    | '/terms'
     | '/messages/$conversationId'
     | '/post/$postId'
     | '/profile/edit'
@@ -265,6 +305,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/admin'
+    | '/appeals'
     | '/auth'
     | '/bookmarks'
     | '/communities'
@@ -272,10 +313,13 @@ export interface FileRouteTypes {
     | '/drafts'
     | '/explore'
     | '/forgot-password'
+    | '/guidelines'
     | '/lists'
     | '/notifications'
+    | '/privacy'
     | '/reset-password'
     | '/search'
+    | '/terms'
     | '/messages/$conversationId'
     | '/post/$postId'
     | '/profile/edit'
@@ -291,6 +335,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/admin'
+    | '/appeals'
     | '/auth'
     | '/bookmarks'
     | '/communities'
@@ -298,10 +343,13 @@ export interface FileRouteTypes {
     | '/drafts'
     | '/explore'
     | '/forgot-password'
+    | '/guidelines'
     | '/lists'
     | '/notifications'
+    | '/privacy'
     | '/reset-password'
     | '/search'
+    | '/terms'
     | '/messages/$conversationId'
     | '/post/$postId'
     | '/profile/edit'
@@ -318,6 +366,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRoute
+  AppealsRoute: typeof AppealsRoute
   AuthRoute: typeof AuthRoute
   BookmarksRoute: typeof BookmarksRoute
   CommunitiesRoute: typeof CommunitiesRoute
@@ -325,10 +374,13 @@ export interface RootRouteChildren {
   DraftsRoute: typeof DraftsRoute
   ExploreRoute: typeof ExploreRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
+  GuidelinesRoute: typeof GuidelinesRoute
   ListsRoute: typeof ListsRoute
   NotificationsRoute: typeof NotificationsRoute
+  PrivacyRoute: typeof PrivacyRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SearchRoute: typeof SearchRoute
+  TermsRoute: typeof TermsRoute
   MessagesConversationIdRoute: typeof MessagesConversationIdRoute
   PostPostIdRoute: typeof PostPostIdRoute
   ProfileEditRoute: typeof ProfileEditRoute
@@ -356,6 +408,13 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/appeals': {
+      id: '/appeals'
+      path: '/appeals'
+      fullPath: '/appeals'
+      preLoaderRoute: typeof AppealsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth': {
@@ -407,6 +466,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ForgotPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/guidelines': {
+      id: '/guidelines'
+      path: '/guidelines'
+      fullPath: '/guidelines'
+      preLoaderRoute: typeof GuidelinesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/lists': {
       id: '/lists'
       path: '/lists'
@@ -421,6 +487,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NotificationsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/reset-password': {
       id: '/reset-password'
       path: '/reset-password'
@@ -433,6 +506,13 @@ declare module '@tanstack/react-router' {
       path: '/search'
       fullPath: '/search'
       preLoaderRoute: typeof SearchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/messages/': {
@@ -518,6 +598,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
+  AppealsRoute: AppealsRoute,
   AuthRoute: AuthRoute,
   BookmarksRoute: BookmarksRoute,
   CommunitiesRoute: CommunitiesRoute,
@@ -525,10 +606,13 @@ const rootRouteChildren: RootRouteChildren = {
   DraftsRoute: DraftsRoute,
   ExploreRoute: ExploreRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
+  GuidelinesRoute: GuidelinesRoute,
   ListsRoute: ListsRoute,
   NotificationsRoute: NotificationsRoute,
+  PrivacyRoute: PrivacyRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SearchRoute: SearchRoute,
+  TermsRoute: TermsRoute,
   MessagesConversationIdRoute: MessagesConversationIdRoute,
   PostPostIdRoute: PostPostIdRoute,
   ProfileEditRoute: ProfileEditRoute,

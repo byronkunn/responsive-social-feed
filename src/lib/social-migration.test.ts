@@ -13,6 +13,13 @@ const followupMigrationPath = fileURLToPath(
   ),
 );
 const followupSql = readFileSync(followupMigrationPath, "utf8").toLowerCase();
+const hardeningMigrationPath = fileURLToPath(
+  new URL(
+    "../../supabase/migrations/20260801190510_production_safety_hardening.sql",
+    import.meta.url,
+  ),
+);
+const hardeningSql = readFileSync(hardeningMigrationPath, "utf8").toLowerCase();
 
 const exposedTables = [
   "posts",
@@ -61,5 +68,37 @@ describe("social feed migration security", () => {
   it("backfills legacy markdown image bodies into media_urls", () => {
     expect(followupSql).toContain("regexp_matches(body, '!\\[image\\]\\((.*?)\\)', 'g')");
     expect(followupSql).toContain("regexp_replace(body, '!\\[image\\]\\((.*?)\\)', '', 'g')");
+  });
+
+  it("adds server-side rate limits for write-heavy actions", () => {
+    expect(hardeningSql).toContain("create table public.rate_limit_events");
+    expect(hardeningSql).toContain("public.check_rate_limit('post:create', 30, interval '1 hour')");
+    expect(hardeningSql).toContain(
+      "public.check_rate_limit('reply:create', 60, interval '1 hour')",
+    );
+    expect(hardeningSql).toContain(
+      "public.check_rate_limit('message:send', 120, interval '1 hour')",
+    );
+    expect(hardeningSql).toContain(
+      "public.check_rate_limit('media:upload', 80, interval '1 hour')",
+    );
+    expect(hardeningSql).toContain(
+      "public.check_rate_limit('report:create', 10, interval '1 hour')",
+    );
+  });
+
+  it("prevents duplicate pending reports from the same reporter", () => {
+    expect(hardeningSql).toContain("moderation_reports_one_pending_per_target_idx");
+    expect(hardeningSql).toContain("status = 'pending' and reporter_id is not null");
+    expect(hardeningSql).toContain("auto-dismissed duplicate pending report");
+  });
+
+  it("notifies users after moderation outcomes", () => {
+    expect(hardeningSql).toContain(
+      "perform public.create_notification(target_author_id, caller_id, 'system', target_post_id)",
+    );
+    expect(hardeningSql).toContain(
+      "perform public.create_notification(target_profile_id, caller_id, 'system', null)",
+    );
   });
 });

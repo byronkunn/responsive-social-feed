@@ -42,6 +42,11 @@ const permissionLabels: Record<AdminPermission, string> = {
 
 const permissionOrder = Object.keys(permissionLabels) as AdminPermission[];
 
+function confirmAdminAction(message: string, phrase: string) {
+  if (typeof window === "undefined") return false;
+  return window.prompt(`${message}\n\nType ${phrase} to confirm.`) === phrase;
+}
+
 function AdminPage() {
   const [dashboard, setDashboard] = useState<AdminDashboard | null>(null);
   const [error, setError] = useState("");
@@ -394,6 +399,15 @@ function PostModerationRow({
   const [busy, setBusy] = useState(false);
 
   async function act(action: "hide" | "remove" | "restore") {
+    if (
+      action !== "restore" &&
+      !confirmAdminAction(
+        `${action === "remove" ? "Remove" : "Hide"} this post from public view?`,
+        action === "remove" ? "REMOVE" : "HIDE",
+      )
+    ) {
+      return;
+    }
     setBusy(true);
     try {
       await moderateAdminPost(post.id, action, `${action} from admin queue`);
@@ -507,6 +521,21 @@ function UserAdminRow({
   }
 
   async function saveRole() {
+    const currentRole = user.role === "member" ? "none" : user.role;
+    if (
+      role === "admin" &&
+      currentRole !== "admin" &&
+      !confirmAdminAction(`Grant admin access to @${user.handle}?`, "ADMIN")
+    ) {
+      return;
+    }
+    if (
+      currentRole !== "none" &&
+      role === "none" &&
+      !confirmAdminAction(`Remove moderator/admin access from @${user.handle}?`, "REMOVE ROLE")
+    ) {
+      return;
+    }
     setBusy(true);
     try {
       await setModerationRole(
@@ -525,6 +554,21 @@ function UserAdminRow({
   }
 
   async function saveRestriction() {
+    if (
+      restriction === "banned" &&
+      !confirmAdminAction(`Ban @${user.handle}? This blocks posting, replies, and messages.`, "BAN")
+    ) {
+      return;
+    }
+    if (
+      restriction === "suspended" &&
+      !confirmAdminAction(
+        `Suspend @${user.handle}? This blocks posting, replies, and messages.`,
+        "SUSPEND",
+      )
+    ) {
+      return;
+    }
     setBusy(true);
     try {
       await setUserRestriction(

@@ -216,6 +216,17 @@ export function AppShell({ children, rail = true }: { children: React.ReactNode;
 
           <p className="px-2 text-xs leading-relaxed text-muted-foreground">
             Pulse is a small, friendlier place to think out loud.
+            <span className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <Link to="/terms" className="hover:text-foreground">
+                Terms
+              </Link>
+              <Link to="/privacy" className="hover:text-foreground">
+                Privacy
+              </Link>
+              <Link to="/guidelines" className="hover:text-foreground">
+                Guidelines
+              </Link>
+            </span>
           </p>
         </aside>
       )}

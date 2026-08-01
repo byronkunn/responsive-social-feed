@@ -35,6 +35,29 @@ const credentials = z.object({
   password: z.string().min(8, { message: "Password must be at least 8 characters" }).max(72),
 });
 
+const AUTH_ATTEMPTS_KEY = "pulse.auth-attempts";
+const AUTH_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
+const AUTH_ATTEMPT_LIMIT = 8;
+
+function pruneAttempts(now: number, attempts: number[]) {
+  return attempts.filter((timestamp) => now - timestamp < AUTH_ATTEMPT_WINDOW_MS);
+}
+
+function recordAuthAttempt() {
+  if (typeof window === "undefined") return true;
+  const now = Date.now();
+  let attempts: number[] = [];
+  try {
+    attempts = pruneAttempts(now, JSON.parse(localStorage.getItem(AUTH_ATTEMPTS_KEY) ?? "[]"));
+  } catch {
+    attempts = [];
+  }
+
+  if (attempts.length >= AUTH_ATTEMPT_LIMIT) return false;
+  localStorage.setItem(AUTH_ATTEMPTS_KEY, JSON.stringify([...attempts, now]));
+  return true;
+}
+
 function AuthPage() {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
@@ -121,6 +144,10 @@ function AuthPage() {
     const parsed = credentials.safeParse({ email, password });
     if (!parsed.success) {
       toast.error(parsed.error.issues[0]?.message ?? "Check your details");
+      return;
+    }
+    if (!recordAuthAttempt()) {
+      toast.error("Too many auth attempts. Wait a few minutes and try again.");
       return;
     }
     setBusy(true);
@@ -295,7 +322,19 @@ function AuthPage() {
         </Button>
 
         <p className="mt-6 text-center text-xs leading-relaxed text-muted-foreground">
-          By continuing you agree to be reasonably kind to strangers.
+          By continuing you agree to the{" "}
+          <Link to="/terms" className="text-signal hover:underline">
+            Terms
+          </Link>
+          ,{" "}
+          <Link to="/privacy" className="text-signal hover:underline">
+            Privacy Policy
+          </Link>
+          , and{" "}
+          <Link to="/guidelines" className="text-signal hover:underline">
+            Community Guidelines
+          </Link>
+          .
         </p>
       </div>
     </main>
