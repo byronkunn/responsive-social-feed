@@ -6,7 +6,7 @@ export async function requireClientSession() {
     return;
   }
 
-  if (localStorage.getItem("pulse_local_user")) return;
+  if (import.meta.env.DEV && localStorage.getItem("pulse_local_user")) return;
 
   const { data, error } = await supabase.auth.getUser();
   if (!error && data.user) return;

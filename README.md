@@ -21,7 +21,7 @@ posting and persistence are wired through Supabase.
 
 ## Development
 
-Use Node.js 22.12 or newer.
+Use Node.js 22.13 or newer.
 
 ```sh
 nvm use
@@ -73,6 +73,5 @@ videos use the MDN CC0 flower sample from the
 
 ## Production Notes
 
-Before production launch, verify Supabase auth, upload limits, storage policies,
-rate limits, moderation/reporting flows, observability, and mobile accessibility
-for the composer and media viewer.
+See [docs/PRODUCTION.md](docs/PRODUCTION.md) for the Supabase and Cloudflare
+setup checklist.

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createFileRoute, Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { Radio, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -43,6 +43,7 @@ function AuthPage() {
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
   const router = useRouter();
+  const localAuthEnabled = import.meta.env.DEV;
 
   function makeLocalProfile(name: string, emailAddress: string): PulseProfile {
     const base = name.trim() || emailAddress.split("@")[0] || "Pulse Member";
@@ -76,12 +77,44 @@ function AuthPage() {
     navigate({ to: "/" });
   }
 
-  async function finishSignedIn(message: string) {
-    localStorage.removeItem("pulse_local_user");
-    toast.success(message);
-    await router.invalidate();
-    navigate({ to: "/" });
-  }
+  const finishSignedIn = useCallback(
+    async (message: string) => {
+      localStorage.removeItem("pulse_local_user");
+      toast.success(message);
+      await router.invalidate();
+      navigate({ to: "/" });
+    },
+    [navigate, router],
+  );
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    const errorDescription = params.get("error_description");
+
+    if (errorDescription) {
+      toast.error(errorDescription);
+      window.history.replaceState({}, "", window.location.pathname);
+      return;
+    }
+
+    if (!code) return;
+
+    let active = true;
+    supabase.auth.exchangeCodeForSession(code).then(async ({ error }) => {
+      if (!active) return;
+      window.history.replaceState({}, "", window.location.pathname);
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+      await finishSignedIn("Signed in");
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [finishSignedIn]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -99,8 +132,8 @@ function AuthPage() {
       if (mode === "signin") {
         const { error } = await supabase.auth.signInWithPassword(parsed.data);
         if (error) {
-          const localProfile = localProfileFromStorage();
-          if (localProfile?.email === emailAddress.toLowerCase()) {
+          const localProfile = localAuthEnabled ? localProfileFromStorage() : null;
+          if (localAuthEnabled && localProfile?.email === emailAddress.toLowerCase()) {
             await finishLocalAccess(localProfile, "Signed in locally");
             return;
           }
@@ -114,6 +147,7 @@ function AuthPage() {
           ...parsed.data,
           options: {
             data: { display_name: name },
+            emailRedirectTo: `${window.location.origin}/auth`,
           },
         });
         if (error) {
@@ -122,10 +156,15 @@ function AuthPage() {
         }
 
         if (!data.session) {
-          await finishLocalAccess(
-            makeLocalProfile(name, emailAddress),
-            "Account created. Email confirmation is still needed for production auth.",
-          );
+          if (localAuthEnabled) {
+            await finishLocalAccess(
+              makeLocalProfile(name, emailAddress),
+              "Account created locally. Check email to enable production auth.",
+            );
+            return;
+          }
+          toast.success("Account created. Check your email to confirm your account.");
+          setMode("signin");
           return;
         }
 

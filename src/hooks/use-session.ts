@@ -12,6 +12,7 @@ export type PulseProfile = {
 };
 
 export function localProfileFromStorage(): PulseProfile | null {
+  if (!import.meta.env.DEV) return null;
   if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem("pulse_local_user");
