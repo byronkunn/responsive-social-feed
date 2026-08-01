@@ -3,7 +3,9 @@ import { Link } from "@tanstack/react-router";
 import { BadgeCheck } from "lucide-react";
 import { Avatar } from "./avatar";
 import { Button } from "@/components/ui/button";
+import { toggleFollowProfile } from "@/lib/social-api";
 import type { Connection } from "@/lib/pulse-data";
+import { toast } from "sonner";
 
 export function ConnectionTabs({ active }: { active: "followers" | "following" }) {
   const tabs = [
@@ -51,6 +53,18 @@ export function ConnectionList({ people }: { people: Connection[] }) {
 function ConnectionRow({ person }: { person: Connection }) {
   const [following, setFollowing] = useState(Boolean(person.follows));
 
+  async function toggle() {
+    const previous = following;
+    setFollowing(!previous);
+    try {
+      await toggleFollowProfile(person.handle, previous);
+      toast.success(previous ? `Unfollowed @${person.handle}` : `Following @${person.handle}`);
+    } catch (error) {
+      setFollowing(previous);
+      toast.error(error instanceof Error ? error.message : "Follow update failed");
+    }
+  }
+
   return (
     <li className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 border-b border-border px-4 py-4 transition-colors hover:bg-surface/60 sm:px-6">
       <Avatar initials={person.initials} />
@@ -67,7 +81,7 @@ function ConnectionRow({ person }: { person: Connection }) {
       <Button
         variant={following ? "secondary" : "default"}
         size="sm"
-        onClick={() => setFollowing((v) => !v)}
+        onClick={() => void toggle()}
         className="shrink-0 rounded-full font-display font-bold"
       >
         {following ? "Following" : "Follow"}

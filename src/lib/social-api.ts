@@ -5,9 +5,12 @@ import {
   type Author,
   type ChatAttachment,
   type ChatMessage,
+  type Community,
+  type Connection,
   type Conversation,
   type Draft,
   type Post,
+  type PulseList,
   type Reply,
 } from "@/lib/pulse-data";
 
@@ -30,6 +33,31 @@ type PersistedProfile = {
   handle: string;
   initials: string;
   bio: string | null;
+};
+
+type PersistedFollow = {
+  follower_id: string;
+  followee_id: string;
+};
+
+type PersistedCommunity = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  owner_id: string;
+  created_at: string;
+};
+
+type PersistedList = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  owner_id: string;
+  is_private: boolean;
+  created_at: string;
+  profiles: PersistedProfile | null;
 };
 
 type PersistedConversation = {
@@ -106,10 +134,29 @@ function toAuthor(profile: PersistedPost["profiles"]): Author {
   };
 }
 
+function toConnection(profile: PersistedProfile, follows: boolean = false): Connection {
+  return {
+    ...toAuthor(profile),
+    bio: profile.bio || "No bio yet.",
+    follows,
+  };
+}
+
+function formatCount(value: number) {
+  if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
+  return String(value);
+}
+
 async function currentUserId() {
   const { data, error } = await supabase.auth.getUser();
   if (error || !data.user) throw new Error("Sign in to continue");
   return data.user.id;
+}
+
+async function maybeCurrentUserId() {
+  const { data } = await supabase.auth.getUser();
+  return data.user?.id ?? null;
 }
 
 function isLocalProfileId(id?: string | null) {
@@ -512,6 +559,123 @@ export async function searchProfiles(query: string): Promise<Author[]> {
   return ((data ?? []) as PersistedProfile[]).map(toAuthor);
 }
 
+export async function fetchSuggestedProfiles(
+  query: string = "",
+  limit: number = 5,
+): Promise<Connection[]> {
+  const userId = await maybeCurrentUserId();
+  const term = query.trim();
+  const request = supabase
+    .from("profiles")
+    .select("id, display_name, handle, initials, bio")
+    .order("display_name", { ascending: true })
+    .limit(limit + 1);
+  const { data, error } = term
+    ? await request.or(`display_name.ilike.%${term}%,handle.ilike.%${term}%`)
+    : await request;
+  if (error) throw error;
+
+  const profiles = ((data ?? []) as PersistedProfile[])
+    .filter((profile) => profile.id !== userId)
+    .slice(0, limit);
+  if (!userId || profiles.length === 0) return profiles.map((profile) => toConnection(profile));
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: followsData, error: followsError } = await (supabase as any)
+    .from("follows")
+    .select("followee_id")
+    .eq("follower_id", userId)
+    .in(
+      "followee_id",
+      profiles.map((profile) => profile.id),
+    );
+  if (followsError) throw followsError;
+
+  const followingIds = new Set(
+    ((followsData ?? []) as Pick<PersistedFollow, "followee_id">[]).map(
+      (follow) => follow.followee_id,
+    ),
+  );
+  return profiles.map((profile) => toConnection(profile, followingIds.has(profile.id)));
+}
+
+export async function toggleFollowProfile(handle: string, active: boolean) {
+  const followerId = await currentUserId();
+  const profile = await fetchProfileByHandle(handle);
+  if (!profile) throw new Error("User not found");
+  if (profile.id === followerId) throw new Error("You cannot follow yourself");
+
+  if (active) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase as any)
+      .from("follows")
+      .delete()
+      .match({ follower_id: followerId, followee_id: profile.id });
+    if (error) throw error;
+    return false;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any).from("follows").insert({
+    follower_id: followerId,
+    followee_id: profile.id,
+  });
+  if (error) throw error;
+  return true;
+}
+
+export async function fetchConnections(kind: "followers" | "following"): Promise<Connection[]> {
+  const userId = await currentUserId();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: followsData, error } = await (supabase as any)
+    .from("follows")
+    .select("follower_id, followee_id, created_at")
+    .eq(kind === "followers" ? "followee_id" : "follower_id", userId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+
+  const follows = (followsData ?? []) as unknown as PersistedFollow[];
+  const profileIds = follows.map((follow) =>
+    kind === "followers" ? follow.follower_id : follow.followee_id,
+  );
+  if (profileIds.length === 0) return [];
+
+  const { data: profilesData, error: profilesError } = await supabase
+    .from("profiles")
+    .select("id, display_name, handle, initials, bio")
+    .in("id", profileIds);
+  if (profilesError) throw profilesError;
+
+  const profiles = new Map(
+    ((profilesData ?? []) as PersistedProfile[]).map((profile) => [profile.id, profile]),
+  );
+
+  if (kind === "following") {
+    return profileIds
+      .map((id) => profiles.get(id))
+      .filter((profile): profile is PersistedProfile => !!profile)
+      .map((profile) => toConnection(profile, true));
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: myFollowsData, error: myFollowsError } = await (supabase as any)
+    .from("follows")
+    .select("followee_id")
+    .eq("follower_id", userId)
+    .in("followee_id", profileIds);
+  if (myFollowsError) throw myFollowsError;
+
+  const followingBackIds = new Set(
+    ((myFollowsData ?? []) as Pick<PersistedFollow, "followee_id">[]).map(
+      (follow) => follow.followee_id,
+    ),
+  );
+  return profileIds
+    .map((id) => profiles.get(id))
+    .filter((profile): profile is PersistedProfile => !!profile)
+    .map((profile) => toConnection(profile, followingBackIds.has(profile.id)));
+}
+
 export async function fetchPostsByHandle(handle: string): Promise<Post[]> {
   const profile = await fetchProfileByHandle(handle);
   if (!profile) return [];
@@ -785,6 +949,54 @@ export async function markNotificationRead(id: string) {
   if (error) throw error;
 }
 
+export async function fetchLists(): Promise<PulseList[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any)
+    .from("lists")
+    .select("id, slug, name, description, owner_id, is_private, created_at")
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+
+  const rows = (data ?? []) as unknown as PersistedList[];
+  if (rows.length === 0) return [];
+
+  const ownerIds = [...new Set(rows.map((list) => list.owner_id))];
+  const { data: profilesData, error: profilesError } = await supabase
+    .from("profiles")
+    .select("id, display_name, handle, initials, bio")
+    .in("id", ownerIds);
+  if (profilesError) throw profilesError;
+
+  const profiles = new Map(
+    ((profilesData ?? []) as PersistedProfile[]).map((profile) => [profile.id, profile]),
+  );
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: membersData } = await (supabase as any)
+    .from("list_members")
+    .select("list_id")
+    .in(
+      "list_id",
+      rows.map((list) => list.id),
+    );
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const members = (membersData ?? []) as any[];
+  const memberCounts = new Map<string, number>();
+  for (const member of members) {
+    memberCounts.set(member.list_id, (memberCounts.get(member.list_id) ?? 0) + 1);
+  }
+
+  return rows.map((list) => ({
+    slug: list.slug,
+    name: list.name,
+    description: list.description || "Custom curated feed",
+    curator: toAuthor(profiles.get(list.owner_id) ?? null),
+    members: memberCounts.get(list.id) ?? 0,
+    posts: 0,
+    pinned: list.is_private,
+  }));
+}
+
 export async function createList(name: string, description: string, isPrivate: boolean = false) {
   const ownerId = await currentUserId();
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
@@ -799,6 +1011,45 @@ export async function createList(name: string, description: string, isPrivate: b
   if (error) throw error;
 }
 
+export async function fetchCommunities(): Promise<Community[]> {
+  const userId = await maybeCurrentUserId();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any)
+    .from("communities")
+    .select("id, slug, name, description, owner_id, created_at")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+
+  const rows = (data ?? []) as PersistedCommunity[];
+  if (rows.length === 0) return [];
+
+  const ids = rows.map((community) => community.id);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: membersData, error: membersError } = await (supabase as any)
+    .from("community_members")
+    .select("community_id, user_id")
+    .in("community_id", ids);
+  if (membersError) throw membersError;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const members = (membersData ?? []) as any[];
+  const counts = new Map<string, number>();
+  const joined = new Set<string>();
+  for (const member of members) {
+    counts.set(member.community_id, (counts.get(member.community_id) ?? 0) + 1);
+    if (userId && member.user_id === userId) joined.add(member.community_id);
+  }
+
+  return rows.map((community) => ({
+    slug: community.slug,
+    name: community.name,
+    blurb: community.description || "A shared room for related posts and people.",
+    members: formatCount(counts.get(community.id) ?? 0),
+    activity: age(community.created_at),
+    joined: joined.has(community.id),
+  }));
+}
+
 export async function createCommunity(name: string, description: string) {
   const ownerId = await currentUserId();
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
@@ -810,6 +1061,36 @@ export async function createCommunity(name: string, description: string) {
     description: description.trim(),
   });
   if (error) throw error;
+}
+
+export async function toggleCommunityMembership(slug: string, active: boolean) {
+  const userId = await currentUserId();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: community, error: communityError } = await (supabase as any)
+    .from("communities")
+    .select("id")
+    .eq("slug", slug)
+    .maybeSingle();
+  if (communityError) throw communityError;
+  if (!community) throw new Error("Community not found");
+
+  if (active) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase as any)
+      .from("community_members")
+      .delete()
+      .match({ community_id: community.id, user_id: userId });
+    if (error) throw error;
+    return false;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any).from("community_members").insert({
+    community_id: community.id,
+    user_id: userId,
+  });
+  if (error) throw error;
+  return true;
 }
 
 export async function seed10UsersAndAlbumPosts() {

@@ -5,8 +5,9 @@ import { AppShell, TopBar } from "@/components/pulse/app-shell";
 import { PostCard } from "@/components/pulse/post-card";
 import { Avatar } from "@/components/pulse/avatar";
 import { Button } from "@/components/ui/button";
-import { type Post, suggestions, trends as seedTrends } from "@/lib/pulse-data";
-import { fetchPosts } from "@/lib/social-api";
+import { type Connection, type Post, trends as seedTrends } from "@/lib/pulse-data";
+import { fetchPosts, fetchSuggestedProfiles, toggleFollowProfile } from "@/lib/social-api";
+import { toast } from "sonner";
 
 type SearchParams = { q: string };
 
@@ -42,12 +43,28 @@ function SearchPage() {
   const [value, setValue] = useState(q);
   const [tab, setTab] = useState<(typeof tabs)[number]>("Top");
   const [allPosts, setAllPosts] = useState<Post[]>([]);
+  const [people, setPeople] = useState<Connection[]>([]);
 
   useEffect(() => {
     fetchPosts()
       .then((data) => setAllPosts(data))
       .catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetchSuggestedProfiles(q, 20)
+      .then((profiles) => {
+        if (active) setPeople(profiles);
+      })
+      .catch(() => {
+        if (active) setPeople([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [q]);
 
   const term = q.trim().toLowerCase();
   const results = term
@@ -58,10 +75,6 @@ function SearchPage() {
           p.author.handle.toLowerCase().includes(term),
       )
     : [];
-
-  const people = suggestions.filter(
-    (p) => !term || p.name.toLowerCase().includes(term) || p.handle.toLowerCase().includes(term),
-  );
 
   const searchSuggestions =
     seedTrends.length > 0 ? seedTrends.map((t) => t.title) : defaultSearchTerms.map((t) => `#${t}`);
@@ -141,16 +154,7 @@ function SearchPage() {
       ) : tab === "People" ? (
         <ul className="divide-y divide-border">
           {people.map((p) => (
-            <li key={p.handle} className="flex items-center gap-3 px-4 py-4 sm:px-6">
-              <Avatar initials={p.initials} className="size-10" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-display text-sm font-bold">{p.name}</p>
-                <p className="truncate text-xs text-muted-foreground">@{p.handle}</p>
-              </div>
-              <Button variant="secondary" size="sm" className="shrink-0 rounded-full font-semibold">
-                Follow
-              </Button>
-            </li>
+            <PeopleResult key={p.handle} person={p} />
           ))}
           {people.length === 0 && (
             <li className="px-6 py-10 text-center text-sm text-muted-foreground">
@@ -168,5 +172,39 @@ function SearchPage() {
         ))
       )}
     </AppShell>
+  );
+}
+
+function PeopleResult({ person }: { person: Connection }) {
+  const [following, setFollowing] = useState(Boolean(person.follows));
+
+  async function toggle() {
+    const previous = following;
+    setFollowing(!previous);
+    try {
+      await toggleFollowProfile(person.handle, previous);
+      toast.success(previous ? `Unfollowed @${person.handle}` : `Following @${person.handle}`);
+    } catch (error) {
+      setFollowing(previous);
+      toast.error(error instanceof Error ? error.message : "Follow update failed");
+    }
+  }
+
+  return (
+    <li className="flex items-center gap-3 px-4 py-4 sm:px-6">
+      <Avatar initials={person.initials} className="size-10" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-display text-sm font-bold">{person.name}</p>
+        <p className="truncate text-xs text-muted-foreground">@{person.handle}</p>
+      </div>
+      <Button
+        variant={following ? "default" : "secondary"}
+        size="sm"
+        onClick={() => void toggle()}
+        className="shrink-0 rounded-full font-semibold"
+      >
+        {following ? "Following" : "Follow"}
+      </Button>
+    </li>
   );
 }

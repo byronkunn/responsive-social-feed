@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { ArrowLeft, BadgeCheck } from "lucide-react";
 import { AppShell } from "@/components/pulse/app-shell";
@@ -5,7 +6,8 @@ import { Avatar } from "@/components/pulse/avatar";
 import { PostCard } from "@/components/pulse/post-card";
 import { Button } from "@/components/ui/button";
 import { authorByHandle, postsByAuthorHandle, type Author, type Post } from "@/lib/pulse-data";
-import { fetchPostsByHandle, fetchProfileByHandle } from "@/lib/social-api";
+import { fetchPostsByHandle, fetchProfileByHandle, toggleFollowProfile } from "@/lib/social-api";
+import { toast } from "sonner";
 
 type PublicProfile = Author & {
   bio: string;
@@ -84,6 +86,7 @@ function UserProfile() {
     profile: PublicProfile;
     posts: Post[];
   };
+  const [following, setFollowing] = useState(false);
   const mediaPosts = posts.filter(
     (post) =>
       post.imageUrl ||
@@ -91,6 +94,20 @@ function UserProfile() {
       (post.imageUrls && post.imageUrls.length > 0) ||
       (post.videoUrls && post.videoUrls.length > 0),
   );
+
+  async function toggleFollow() {
+    const previous = following;
+    setFollowing(!previous);
+    try {
+      await toggleFollowProfile(profile.handle, previous);
+      toast.success(previous ? `Unfollowed @${profile.handle}` : `Following @${profile.handle}`);
+    } catch (error) {
+      if (!import.meta.env.DEV) {
+        setFollowing(previous);
+        toast.error(error instanceof Error ? error.message : "Follow update failed");
+      }
+    }
+  }
 
   return (
     <AppShell>
@@ -102,8 +119,12 @@ function UserProfile() {
             initials={profile.initials}
             className="-mt-10 size-20 rounded-3xl text-xl ring-4 ring-background sm:-mt-12 sm:size-24"
           />
-          <Button variant="secondary" className="mb-1 shrink-0 rounded-full font-display font-bold">
-            Follow
+          <Button
+            variant={following ? "default" : "secondary"}
+            onClick={() => void toggleFollow()}
+            className="mb-1 shrink-0 rounded-full font-display font-bold"
+          >
+            {following ? "Following" : "Follow"}
           </Button>
         </div>
         <div className="mt-3 flex min-w-0 items-center gap-1.5">

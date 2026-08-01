@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -20,7 +21,13 @@ import { Avatar } from "./avatar";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfile } from "@/hooks/use-session";
-import { currentUser, trends, suggestions } from "@/lib/pulse-data";
+import { currentUser, posts as seedPosts, type Connection } from "@/lib/pulse-data";
+import {
+  fetchExploreData,
+  fetchSuggestedProfiles,
+  toggleFollowProfile,
+  type ExploreTrend,
+} from "@/lib/social-api";
 
 const nav = [
   { to: "/", label: "Home", icon: Home },
@@ -47,6 +54,38 @@ export function AppShell({ children, rail = true }: { children: React.ReactNode;
   const handle = profile?.handle ?? currentUser.handle;
   const initials = (profile?.initials ?? currentUser.initials).slice(0, 2).toUpperCase();
   const signedIn = Boolean(session || profile);
+  const [railTrends, setRailTrends] = useState<ExploreTrend[]>([]);
+  const [railSuggestions, setRailSuggestions] = useState<Connection[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    fetchExploreData()
+      .then((data) => {
+        if (active) {
+          setRailTrends(
+            data.trends.length > 0
+              ? data.trends.slice(0, 5)
+              : import.meta.env.DEV
+                ? buildRailTrendsFromSeed()
+                : [],
+          );
+        }
+      })
+      .catch(() => {
+        if (active) setRailTrends(import.meta.env.DEV ? buildRailTrendsFromSeed() : []);
+      });
+    fetchSuggestedProfiles("", 3)
+      .then((profiles) => {
+        if (active) setRailSuggestions(profiles);
+      })
+      .catch(() => {
+        if (active) setRailSuggestions([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function signOut() {
     await queryClient.cancelQueries();
@@ -127,37 +166,34 @@ export function AppShell({ children, rail = true }: { children: React.ReactNode;
           <div className="rounded-3xl bg-surface p-4">
             <h2 className="font-display text-lg font-bold">What's pulsing</h2>
             <ul className="mt-3 space-y-3">
-              {trends.map((t) => (
+              {railTrends.map((t) => (
                 <li key={t.title} className="min-w-0">
-                  <Link to="/search" search={{ q: t.title }} className="block min-w-0">
+                  <Link to="/tag/$tag" params={{ tag: t.tag }} className="block min-w-0">
                     <p className="truncate text-xs text-muted-foreground">{t.topic}</p>
                     <p className="truncate font-display text-sm font-bold">{t.title}</p>
                     <p className="text-xs text-muted-foreground">{t.count}</p>
                   </Link>
                 </li>
               ))}
+              {railTrends.length === 0 && (
+                <li className="text-sm text-muted-foreground">
+                  Trends appear after people post with hashtags.
+                </li>
+              )}
             </ul>
           </div>
 
           <div className="rounded-3xl bg-surface p-4">
             <h2 className="font-display text-lg font-bold">Worth following</h2>
             <ul className="mt-3 space-y-3">
-              {suggestions.map((s) => (
-                <li key={s.handle} className="flex items-center gap-3">
-                  <Avatar initials={s.initials} className="size-9" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-display text-sm font-bold">{s.name}</p>
-                    <p className="truncate text-xs text-muted-foreground">@{s.handle}</p>
-                  </div>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="shrink-0 rounded-full font-semibold"
-                  >
-                    Follow
-                  </Button>
-                </li>
+              {railSuggestions.map((s) => (
+                <SuggestionRow key={s.handle} person={s} signedIn={signedIn} />
               ))}
+              {railSuggestions.length === 0 && (
+                <li className="text-sm text-muted-foreground">
+                  More accounts appear as people join Pulse.
+                </li>
+              )}
             </ul>
           </div>
 
@@ -186,6 +222,66 @@ export function AppShell({ children, rail = true }: { children: React.ReactNode;
         </ul>
       </nav>
     </div>
+  );
+}
+
+function buildRailTrendsFromSeed(): ExploreTrend[] {
+  const counts = new Map<string, number>();
+  for (const post of seedPosts) {
+    if (post.tag) counts.set(post.tag, (counts.get(post.tag) ?? 0) + 1);
+  }
+
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 5)
+    .map(([tag, count]) => ({
+      tag,
+      topic: "Trending tag",
+      title: `#${tag}`,
+      count: `${count} pulse${count === 1 ? "" : "s"}`,
+      posts: count,
+    }));
+}
+
+function SuggestionRow({ person, signedIn }: { person: Connection; signedIn: boolean }) {
+  const [following, setFollowing] = useState(Boolean(person.follows));
+
+  async function toggle() {
+    if (!signedIn) return;
+    const previous = following;
+    setFollowing(!previous);
+    try {
+      await toggleFollowProfile(person.handle, previous);
+    } catch {
+      setFollowing(previous);
+    }
+  }
+
+  return (
+    <li className="flex items-center gap-3">
+      <Link to="/user/$handle" params={{ handle: person.handle }} className="shrink-0">
+        <Avatar initials={person.initials} className="size-9" />
+      </Link>
+      <div className="min-w-0 flex-1">
+        <Link
+          to="/user/$handle"
+          params={{ handle: person.handle }}
+          className="truncate font-display text-sm font-bold hover:underline"
+        >
+          {person.name}
+        </Link>
+        <p className="truncate text-xs text-muted-foreground">@{person.handle}</p>
+      </div>
+      <Button
+        variant={following ? "default" : "secondary"}
+        size="sm"
+        onClick={() => void toggle()}
+        disabled={!signedIn}
+        className="shrink-0 rounded-full font-semibold"
+      >
+        {following ? "Following" : "Follow"}
+      </Button>
+    </li>
   );
 }
 

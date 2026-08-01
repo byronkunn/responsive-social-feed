@@ -1,9 +1,11 @@
+import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell, TopBar } from "@/components/pulse/app-shell";
 import { ConnectionList, ConnectionTabs } from "@/components/pulse/connection-list";
 import { useProfile } from "@/hooks/use-session";
-import { currentUser, followers } from "@/lib/pulse-data";
+import { currentUser, type Connection } from "@/lib/pulse-data";
 import { requireClientSession } from "@/lib/require-auth";
+import { fetchConnections } from "@/lib/social-api";
 
 export const Route = createFileRoute("/profile/followers")({
   beforeLoad: requireClientSession,
@@ -22,8 +24,24 @@ export const Route = createFileRoute("/profile/followers")({
 
 function FollowersPage() {
   const { profile } = useProfile();
+  const [followers, setFollowers] = useState<Connection[]>([]);
   const name = profile?.display_name ?? currentUser.name;
   const handle = profile?.handle ?? currentUser.handle;
+
+  useEffect(() => {
+    let active = true;
+    fetchConnections("followers")
+      .then((items) => {
+        if (active) setFollowers(items);
+      })
+      .catch(() => {
+        if (active) setFollowers([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return (
     <AppShell rail={false}>
